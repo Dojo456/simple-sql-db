@@ -39,7 +39,7 @@ type Table struct {
 
 // CreateTable creates a table and returns the table corresponding table struct.
 func CreateTable(ctx context.Context, name string, fields []*Field) (*Table, error) {
-	path := fmt.Sprintf("./%s-db", name)
+	path := fmt.Sprintf("./database/%s-db", name)
 
 	file, err := getFile(path)
 	if err != nil {

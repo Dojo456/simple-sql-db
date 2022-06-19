@@ -16,3 +16,6 @@
 
 # Build ouput
 ./build
+
+# Testing output
+./database

@@ -2,28 +2,46 @@
 // database.
 package backend
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+)
 
-// Put puts the value at the specified key
-func Put(key string, value interface{}) error {
-	data[key] = value
+// Primitives represents all the data types that the database can store
+type Primitives int
 
-	return nil
+const (
+	StringPrimitive Primitives = iota
+	IntPrimitive
+	FloatPrimitive
+)
+
+// Field is essentially a column in a table
+type Field struct {
+	Name string
+	Type Primitives
 }
 
-// Get gets the value at the specified key
-func Get(key string) (interface{}, error) {
-	val, exists := data[key]
+type Table struct {
+	Name   string
+	Fields []Field
+}
 
-	if !exists {
-		return nil, fmt.Errorf("key does not exist")
+// CreateTable creates a table and returns the table corresponding table struct
+func CreateTable(ctx context.Context, name string, fields []Field) (*Table, error) {
+	path := fmt.Sprintf("./%s-db", name)
+
+	file, err := getFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("could not open db file: %w", err)
 	}
 
-	return val, nil
-}
+	table := Table{
+		Name:   name,
+		Fields: fields,
+	}
 
-var data map[string]interface{}
+	// write the table struct to the file to act as a header and schema
+	file.Write()
 
-func init() {
-	data = map[string]interface{}{}
 }

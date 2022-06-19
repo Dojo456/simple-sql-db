@@ -1,4 +1,4 @@
-// The backend package interacts with storage devices to provide the data storage functionality of the
+// Package backend The backend package interacts with storage devices to provide the data storage functionality of the
 // database.
 package backend
 

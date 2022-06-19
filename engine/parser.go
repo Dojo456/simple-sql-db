@@ -20,6 +20,12 @@ const (
 	TextKeyword   keyword = "text"
 )
 
+func isKeyword(s string) bool {
+	k := keyword(s)
+
+	return k.IsValid()
+}
+
 func (k keyword) IsValid() bool {
 	switch k {
 	case SelectKeyword, FromKeyword, AsKeyword, TableKeyword, CreateKeyword, InsertKeyword, IntoKeyword, ValuesKeyword, IntKeyword, TextKeyword:
@@ -38,6 +44,12 @@ const (
 	rightParenSymbol symbol = ")"
 )
 
+func isSymbol(s string) bool {
+	sym := symbol(s)
+
+	return sym.IsValid()
+}
+
 func (s symbol) IsValid() bool {
 	switch s {
 	case semicolonSymbol, asteriskSymbol, commaSymbol, leftParenSymbol, rightParenSymbol:
@@ -46,33 +58,75 @@ func (s symbol) IsValid() bool {
 	return false
 }
 
-// Parse parses a SQL string and converts it to a format that can then be executed
-func Parse(statementString string) error {
-	tokens := strings.Split(statementString, " ")
-
+// Parse parses a SQL string and converts it to a list of tokens. A token is defined as an understandable SQL statement.
+// e.g. (CREATE TABLE), (SELECT), or arguments to command.
+func Parse(statementString string) ([]string, error) {
 	if isEmptyString(statementString) {
-		return fmt.Errorf("empty command")
+		return nil, fmt.Errorf("empty command")
 	}
 
-	var currentKeywords []keyword
+	statementString = cleanString(statementString)
 
-	for _, token := range tokens {
-		asKeyword := keyword(token)
+	var currentToken strings.Builder
+	var tokens []string
 
-		if asKeyword.IsValid() {
-			currentKeywords = append(currentKeywords, asKeyword)
+	// using iterator loop to allow for easier of movement of cursor (incrementing or decrementing i)
+	for i := 0; i < len(statementString); i++ {
+		r := rune(statementString[i])
+
+		// TODO look into pattern matching switch statements in Go
+		if r == '(' {
+			group, end, err := captureParenthesisGroup(i, statementString)
+			if err != nil {
+				return nil, fmt.Errorf("could not capture parenthesis group at %d: %w", i, err)
+			}
+
+			tokens = append(tokens, group)
+			i = end
+			continue
+		} else if r == ' ' && currentToken.Len() != 0 {
+			tokens = append(tokens, currentToken.String())
+			currentToken = strings.Builder{}
+		} else {
+			currentToken.WriteRune(r)
+			continue
 		}
-
 	}
 
-	return nil
+	if currentToken.Len() != 0 {
+		tokens = append(tokens, currentToken.String())
+	}
+
+	return tokens, nil
 }
 
-func (k keyword) tokensNeeded() int {
-	switch k {
-	case CreateKeyword:
-		return 2
+// captureParenthesisGroup captures the parenthesis group starting at the given index string.
+// It is an error if the rune at the start index is not an open parenthesis.
+// It returns the entire group as one string, excluding the outermost parenthesis,
+// and also returns the rune index of the closing parenthesis.
+func captureParenthesisGroup(start int, s string) (group string, end int, err error) {
+	if s[start] != '(' {
+		return "", 0, fmt.Errorf("starting rune is not an open parenthesis")
+	}
+	var captured strings.Builder
+
+	i := start + 1
+	closed := false
+
+	for i = start + 1; i < len(s); i++ {
+		c := rune(s[i])
+
+		if c == ')' {
+			closed = true
+			break
+		}
+
+		captured.WriteRune(c)
 	}
 
-	return 0
+	if !closed {
+		return "", 0, fmt.Errorf("unclosed parenthesis")
+	}
+
+	return captured.String(), i, nil
 }

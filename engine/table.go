@@ -1,0 +1,77 @@
+package engine
+
+import (
+	"context"
+	"fmt"
+	"github.com/Dojo456/simple-inmem-db/backend"
+	"strings"
+)
+
+func createTable(ctx context.Context, args []interface{}) (*backend.Table, error) {
+	// two args are needed, first the name then the fields as a parenthesis group
+	if len(args) != 2 {
+		return nil, fmt.Errorf("wrong number of arguments for CreateTable: expected 2 args, received %d", len(args))
+	}
+
+	name, ok := args[0].(string)
+	if !ok {
+		return nil, fmt.Errorf("name of table must be string")
+	}
+
+	fieldString, ok := args[1].(string)
+	if !ok {
+		return nil, fmt.Errorf("table fields must be written in string format")
+	}
+
+	fields, err := parseTableFields(fieldString)
+	if err != nil {
+		return nil, fmt.Errorf("could not parse table fields: %w", err)
+	}
+
+	table, err := backend.CreateTable(ctx, name, fields)
+	if err != nil {
+		return nil, fmt.Errorf("could not create table: %w", err)
+	}
+
+	return table, nil
+}
+
+func parseTableFields(s string) ([]*backend.Field, error) {
+	// the cleaned string should have the outer parenthesis removed and no newlines or redundant whitespaces
+	// fields in a CREATE TABLE statement are separated by commas
+	s = cleanString(s)
+
+	rawFields := strings.Split(s, ",")
+	parsedFields := make([]*backend.Field, len(rawFields))
+
+	for i, rf := range rawFields {
+		f, err := parseField(rf)
+		if err != nil {
+			return nil, fmt.Errorf("could not parse field %d: %w", i, err)
+		}
+
+		parsedFields[i] = f
+	}
+
+	return parsedFields, nil
+}
+
+func parseField(s string) (*backend.Field, error) {
+	// name and data type are separated by space per field
+	tokens := strings.Split(s, " ")
+	if len(tokens) != 2 {
+		return nil, fmt.Errorf("%s is not acceptable", s)
+	}
+
+	name := tokens[0]
+	dataType := backend.Primitive(strings.ToLower(tokens[1]))
+
+	if !dataType.IsValid() {
+		return nil, fmt.Errorf("%s is not a valid data type", dataType)
+	}
+
+	return &backend.Field{
+		Name: name,
+		Type: dataType,
+	}, nil
+}

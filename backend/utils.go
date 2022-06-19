@@ -1,6 +1,8 @@
 package backend
 
-import "os"
+import (
+	"os"
+)
 
 func getFile(path string) (*os.File, error) {
 	// check if file exists

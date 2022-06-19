@@ -34,10 +34,10 @@ func main() {
 
 		cmd, err := sqlEngine.Execute(ctx, input)
 		if err != nil {
-			fmt.Println(fmt.Errorf("error parsing command: %w", err))
+			fmt.Println(fmt.Errorf("error executing command: %w", err))
 			continue
 		}
 
-		fmt.Println(cmd)
+		fmt.Printf("\n%v", cmd)
 	}
 }

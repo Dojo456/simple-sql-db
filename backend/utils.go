@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"encoding/binary"
 	"errors"
 	"os"
 )
@@ -17,14 +18,14 @@ func createFile(path string) (*os.File, error) {
 
 	// create file if not exists
 	if os.IsNotExist(err) {
-		return nil, fileAlreadyExistsError
-	} else {
 		file, err := os.Create(path)
 		if err != nil {
 			return nil, err
 		}
 
 		return file, nil
+	} else {
+		return nil, fileAlreadyExistsError
 	}
 }
 
@@ -51,18 +52,13 @@ func getFile(path string) (*os.File, error) {
 
 // i32tob converts an uint32 to a byte slice of size 4
 func i32tob(val uint32) []byte {
-	r := make([]byte, 4)
-	for i := uint32(0); i < 4; i++ {
-		r[i] = byte((val >> (8 * i)) & 0xff)
-	}
-	return r
+	b := make([]byte, 4)
+	binary.LittleEndian.PutUint32(b, val)
+
+	return b
 }
 
 // btoi32 converts a byte slice of size 4 to an uint32
 func btoi32(val []byte) uint32 {
-	r := uint32(0)
-	for i := uint32(0); i < 4; i++ {
-		r |= uint32(val[i]) << (8 * i)
-	}
-	return r
+	return binary.LittleEndian.Uint32(val)
 }

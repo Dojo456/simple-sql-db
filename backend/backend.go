@@ -52,9 +52,11 @@ func CreateTable(ctx context.Context, name string, fields []*Field) (*Table, err
 	path := fmt.Sprintf("./database/%s-db", name)
 
 	file, err := createFile(path)
+	defer file.Close()
+
 	if err != nil {
 		if errors.Is(err, fileAlreadyExistsError) {
-			return nil, fmt.Errorf("table with name %s already exists", name)
+			return nil, fmt.Errorf(`table with name "%s" already exists`, name)
 		} else {
 			return nil, fmt.Errorf("could not create table db file: %w", err)
 		}

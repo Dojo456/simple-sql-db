@@ -104,7 +104,6 @@ func CreateTable(ctx context.Context, name string, fields []*Field) (*Table, err
 	path := getTableFilePath(name)
 
 	file, err := createFile(path)
-
 	if err != nil {
 		if errors.Is(err, fileAlreadyExistsError) {
 			return nil, fmt.Errorf(`table with name "%s" already exists`, name)
@@ -113,7 +112,10 @@ func CreateTable(ctx context.Context, name string, fields []*Field) (*Table, err
 		}
 	}
 
+	var lock sync.RWMutex
+
 	table := Table{
+		mrw:          &lock,
 		rowCount:     0,
 		file:         file,
 		Name:         name,
@@ -230,5 +232,13 @@ func OpenTable(name string) (*Table, error) {
 		}
 	}
 
-	return readTableFile(f)
+	table, err := readTableFile(f)
+	if err != nil {
+		return nil, fmt.Errorf("could not read table file: %w", err)
+	}
+
+	var lock sync.RWMutex
+	table.mrw = &lock
+
+	return table, nil
 }

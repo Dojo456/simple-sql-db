@@ -27,7 +27,7 @@ func New(ctx context.Context) (*SQLEngine, error) {
 func (e *SQLEngine) Execute(ctx context.Context, statement string) (interface{}, error) {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Println("\nEngine panic recovered: %w", r)
+			log.Println("\nEngine panic recovered", r)
 			debug.PrintStack()
 		}
 	}()
@@ -43,9 +43,8 @@ func (e *SQLEngine) Execute(ctx context.Context, statement string) (interface{},
 	for i := 0; i < len(tokens); i++ {
 		token := tokens[i]
 
-		asAKeyword := keyword(strings.ToLower(token))
-		if asAKeyword.IsValid() {
-			currentKeywords = append(currentKeywords, asAKeyword)
+		if isKeyword(token.s) {
+			currentKeywords = append(currentKeywords, asKeyword(token.s))
 		}
 
 		cmd, err := getCommand(currentKeywords)
@@ -54,7 +53,7 @@ func (e *SQLEngine) Execute(ctx context.Context, statement string) (interface{},
 		}
 
 		if cmd != nil { // an executable command has been found
-			args, err := cmd.captureArguments(tokens, i)
+			args, end, err := cmd.captureArguments(tokens, i)
 			if err != nil {
 				var mapped []string
 				for _, k := range currentKeywords {
@@ -70,6 +69,8 @@ func (e *SQLEngine) Execute(ctx context.Context, statement string) (interface{},
 				Cmd:  *cmd,
 				Args: args,
 			}
+
+			i = end
 		}
 	}
 

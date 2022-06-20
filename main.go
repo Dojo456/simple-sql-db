@@ -7,12 +7,10 @@ import (
 	"github.com/Dojo456/simple-sql-db/engine"
 	"log"
 	"os"
+	"os/signal"
 )
 
 func main() {
-	defer os.Exit(0)
-	defer fmt.Println("\ngracefully shutting down")
-
 	ctx := context.Background()
 
 	scanner := bufio.NewScanner(os.Stdin)
@@ -21,12 +19,12 @@ func main() {
 		log.Fatalln(fmt.Errorf("could not intialize SQL Engine: %w", err))
 	}
 
-	defer func(sqlEngine *engine.SQLEngine) {
-		err := sqlEngine.Cleanup()
-		if err != nil {
-			log.Println(fmt.Errorf("SQL engine could not properly cleanup: %w", err))
-		}
-	}(sqlEngine)
+	defer cleanup(sqlEngine)
+	go func() {
+		sigchan := make(chan os.Signal)
+		signal.Notify(sigchan, os.Interrupt)
+		<-sigchan
+	}()
 
 	for {
 		fmt.Println("\nenter command:")
@@ -47,4 +45,17 @@ func main() {
 
 		fmt.Printf("\n%v", cmd)
 	}
+}
+
+func cleanup(e engine.Cleanable) {
+	fmt.Println("\ngracefully shutting down")
+
+	err := e.Cleanup()
+	if err != nil {
+		fmt.Println("could not perform clean shutdown", err)
+	} else {
+		fmt.Println("shutdown complete")
+	}
+
+	os.Exit(0)
 }

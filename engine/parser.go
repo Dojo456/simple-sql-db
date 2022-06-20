@@ -2,6 +2,7 @@ package engine
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -129,4 +130,22 @@ func captureParenthesisGroup(start int, s string) (group string, end int, err er
 	}
 
 	return captured.String(), i, nil
+}
+
+// captureUntilKeyword captures everything until the next keyword after the given start index. If the keyword cannot be
+// found, an error is returned.
+func captureUntilKeyword(start int, s string, k keyword) (group string, end int, err error) {
+	truncated := s[start:]
+
+	expr, err := regexp.Compile(fmt.Sprintf(".+(?=%s)", k))
+	if err != nil {
+		return "", 0, err
+	}
+
+	group = expr.FindString(truncated)
+	if group == "" {
+		return "", 0, fmt.Errorf("could not find %s keyword", k)
+	}
+
+	return
 }

@@ -11,6 +11,7 @@ type command int
 const (
 	CreateTableCommand command = iota
 	SelectCommand
+	InsertCommand
 )
 
 func getCommand(keywords []keyword) (*command, error) {
@@ -37,6 +38,18 @@ func getCommand(keywords []keyword) (*command, error) {
 	case SelectKeyword:
 		returner = SelectCommand
 		found = true
+	case InsertKeyword:
+		{
+			if len(keywords) > 1 {
+				second := keywords[1]
+				switch second {
+				case IntoKeyword:
+					returner = InsertCommand
+					found = true
+				}
+			}
+		}
+
 	}
 
 	if !found {
@@ -46,16 +59,15 @@ func getCommand(keywords []keyword) (*command, error) {
 	return &returner, nil
 }
 
-func (c command) argsNeeded() int {
-	switch c {
-	case CreateTableCommand:
-		return 2
-	case SelectCommand:
-		return 3
-	}
-
-	return 0
+// captureArguments will capture all arguments required for an executable from the list of tokens with the start index
+// being the index of the last token in the command statement. If arguments cannot be properly captured, an error
+// will be returned.
+func (c command) captureArguments(tokens []string, start int) ([]*evaluable, error) {
+	return nil, nil
 }
+
+// The execution engine works by building a tree of evaluables and then recursively evaluating all of them, starting
+// from the bottom-most node which has no dependencies on other commands
 
 // evaluable represents a statement that has a value. It can be either a value literal such as a string or an
 // executable SQL statement

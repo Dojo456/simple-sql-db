@@ -54,16 +54,16 @@ func (e *SQLEngine) Execute(ctx context.Context, statement string) (interface{},
 		}
 
 		if cmd != nil { // an executable command has been found
-			next := cmd.argsNeeded()
-			i++
-			argString := tokens[i : i+next]
-			i += next
+			args, err := cmd.captureArguments(tokens, i)
+			if err != nil {
+				var mapped []string
+				for _, k := range currentKeywords {
+					mapped = append(mapped, string(k))
+				}
 
-			args := make([]*evaluable, len(argString))
-			for i, as := range argString {
-				val := evaluable(value{val: as})
+				joined := strings.Join(mapped, " ")
 
-				args[i] = &val
+				return nil, fmt.Errorf("invalid arguements for %s statement: %w", joined, err)
 			}
 
 			exec = &executable{

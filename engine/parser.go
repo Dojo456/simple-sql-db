@@ -288,13 +288,15 @@ func getCommand(keywords []keyword) (*command, error) {
 // captureArguments will capture all arguments required for an executable from the list of tokens with the start index
 // being the index of the last token in the command statement. If arguments cannot be properly captured, an error
 // will be returned. It returns the arguments as an evaluable slice and the index of the last argument token.
-func (c *command) captureArguments(tokens []token, start int) (args []*evaluable, end int, err error) {
+func (c command) captureArguments(tokens []token, start int) (args []evaluable, end int, err error) {
 	truncated := tokens[start+1:]
 	argsCaptured := 0
 
-	switch *c {
+	switch c {
 	case CreateTableCommand:
 		args, argsCaptured, err = captureCreateTableArgs(truncated)
+	case InsertCommand:
+		args, argsCaptured, err = captureInsertArgs(truncated)
 	}
 
 	if err != nil {
@@ -304,7 +306,7 @@ func (c *command) captureArguments(tokens []token, start int) (args []*evaluable
 	return args, start + argsCaptured, nil
 }
 
-func captureCreateTableArgs(truncated []token) ([]*evaluable, int, error) {
+func captureCreateTableArgs(truncated []token) ([]evaluable, int, error) {
 	if len(truncated) < 2 {
 		return nil, 0, fmt.Errorf("not enough arguments")
 	}
@@ -319,11 +321,42 @@ func captureCreateTableArgs(truncated []token) ([]*evaluable, int, error) {
 		return nil, 0, fmt.Errorf("invalid fields declaration")
 	}
 
-	nameVal := evaluable(value{val: name.s})
-	fieldsVal := evaluable(value{val: fields.s})
-
-	return []*evaluable{
-		&nameVal,
-		&fieldsVal,
+	return []evaluable{
+		asValue(name.s),
+		asValue(fields.s),
 	}, 2, nil
+}
+
+func captureInsertArgs(truncated []token) ([]evaluable, int, error) {
+	if len(truncated) < 3 {
+		return nil, 0, fmt.Errorf("not enough arguments")
+	}
+
+	args := make([]evaluable, 0, 3)
+
+	name := truncated[0]
+	if name.t != ValueTokenType {
+		return nil, 0, fmt.Errorf("invalid table name")
+	}
+	args = append(args, asValue(name.s))
+
+	//fieldsOrValue := truncated[1]
+	//
+	//if fieldsOrValue.t == ParenthesisGroupTokenType { // values are explicitly assigned to fields
+	//
+	//}
+
+	valKeyword := truncated[1]
+	if valKeyword.t != ValueTokenType || asKeyword(valKeyword.s) != ValuesKeyword {
+		return nil, 0, fmt.Errorf("invalid syntax")
+	}
+	args = append(args, asValue(valKeyword.s))
+
+	values := truncated[2]
+	if values.t != ParenthesisGroupTokenType {
+		return nil, 0, fmt.Errorf("invalid values syntax")
+	}
+	args = append(args, asValue(values.s))
+
+	return args, 3, nil
 }

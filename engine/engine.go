@@ -10,7 +10,7 @@ import (
 )
 
 type SQLEngine struct {
-	openTables []*backend.Table
+	openTables map[string]*backend.Table
 }
 
 type Cleanable interface {
@@ -19,7 +19,9 @@ type Cleanable interface {
 
 // New returns a new engine instance that can then be used to execute SQL statements.
 func New(ctx context.Context) (*SQLEngine, error) {
-	return &SQLEngine{}, nil
+	return &SQLEngine{
+		map[string]*backend.Table{},
+	}, nil
 }
 
 // Execute parses then executes the given statement string. It will return a value if the executed statement requires
@@ -78,7 +80,7 @@ func (e *SQLEngine) Execute(ctx context.Context, statement string) (interface{},
 		return nil, fmt.Errorf("not evaluable")
 	}
 
-	return exec.Value(ctx)
+	return exec.Value(ctx, e)
 }
 
 func (e *SQLEngine) Cleanup() error {

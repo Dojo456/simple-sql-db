@@ -25,15 +25,15 @@ func toEvaluable(s string) (*evaluable, error) {
 // executable is an SQL statement that can be executed to obtain a value. It implements the evaluable interface.
 type executable struct {
 	Cmd  command
-	Args []*evaluable
+	Args []evaluable
 }
 
 // Value recursively evaluates an executable down to the smallest executable that can be evaluated without
 // any dependencies.
-func (e *executable) Value(ctx context.Context) (interface{}, error) {
+func (e *executable) Value(ctx context.Context, engine *SQLEngine) (interface{}, error) {
 	argValues := make([]interface{}, len(e.Args))
 	for i, arg := range e.Args {
-		val, err := (*arg).Value(ctx)
+		val, err := arg.Value(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -42,14 +42,19 @@ func (e *executable) Value(ctx context.Context) (interface{}, error) {
 	}
 
 	var returner interface{}
+	var err error
 
 	switch e.Cmd {
 	case CreateTableCommand:
 		{
-			_, err := createTable(ctx, argValues)
+			returner, err = engine.createTable(ctx, argValues)
 			if err != nil {
 				return nil, fmt.Errorf("could not evaluate createTable: %w", err)
 			}
+		}
+	case InsertCommand:
+		{
+			engine.insertRow(ctx)
 		}
 	}
 
@@ -65,7 +70,7 @@ func (v value) Value(ctx context.Context) (interface{}, error) {
 	return v.val, nil
 }
 
-// toValue simply turns any val into a value struct.
-func toValue(val interface{}) *value {
+// asValue simply turns any val into a value struct.
+func asValue(val interface{}) *value {
 	return &value{val: val}
 }

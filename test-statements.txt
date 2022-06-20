@@ -1,1 +1,2 @@
 CREATE TABLE table (name string)
+INSERT INTO table VALUES (daniel)

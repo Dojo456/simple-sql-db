@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-func createTable(ctx context.Context, args []interface{}) (*backend.Table, error) {
+func (e *SQLEngine) createTable(ctx context.Context, args []interface{}) (*backend.Table, error) {
 	// two args are needed, first the name then the fields as a parenthesis group
 	if len(args) != 2 {
 		return nil, fmt.Errorf("wrong number of arguments for CreateTable: expected 2 args, received %d", len(args))
@@ -32,6 +32,8 @@ func createTable(ctx context.Context, args []interface{}) (*backend.Table, error
 	if err != nil {
 		return nil, fmt.Errorf("could not create table: %w", err)
 	}
+
+	e.openTables[name] = table
 
 	return table, nil
 }
@@ -74,4 +76,41 @@ func parseField(s string) (*backend.Field, error) {
 		Name: name,
 		Type: dataType,
 	}, nil
+}
+
+func (e *SQLEngine) insertRow(ctx context.Context) {
+	name := "table"
+
+	table, err := e.getTable(ctx, name)
+	if err != nil {
+		fmt.Println("could not open table file", err)
+		return
+	}
+
+	_, err = table.InsertRow([]*backend.Value{
+		{
+			Type: backend.StringPrimitive,
+			Val:  "daniel",
+		},
+	})
+	if err != nil {
+		fmt.Println("could not open table file", err)
+		return
+	}
+}
+
+func (e *SQLEngine) getTable(ctx context.Context, name string) (*backend.Table, error) {
+	var err error
+
+	table, open := e.openTables[name]
+	if !open {
+		table, err = backend.OpenTable(name)
+		if err != nil {
+			return nil, err
+		}
+
+		e.openTables[name] = table
+	}
+
+	return table, nil
 }

@@ -132,11 +132,6 @@ func CreateTable(ctx context.Context, name string, fields []*Field) (*Table, err
 		return nil, fmt.Errorf("could not write table header: %w", err)
 	}
 
-	err = file.Close()
-	if err != nil {
-		return nil, fmt.Errorf("could not close file: %w", err)
-	}
-
 	return &table, nil
 }
 
@@ -150,9 +145,9 @@ func (t *Table) writeTableHeader() error {
 		return fmt.Errorf("could not encode table metadata: %w", err)
 	}
 
-	headerByteCount := 4 + len(data)
+	headerByteCount := len(data)
 
-	// begin header with an unsigned i32 that is the number of bytes of the table size, including the number itself
+	// begin header with an unsigned i64 that is the number of bytes of the table size, including the number itself
 	header := i64tob(uint64(headerByteCount))
 	header = append(header, data...)
 
@@ -162,6 +157,7 @@ func (t *Table) writeTableHeader() error {
 	}
 
 	t.headerByteCount = uint64(headerByteCount)
+	t.fileSize = int64(headerByteCount)
 
 	return nil
 }
@@ -180,7 +176,7 @@ func calculateRowSize(fields []*Field) uint64 {
 
 // readTableFile reads a tableFile's header to create a Table struct that can then be used for operations.
 func readTableFile(file *os.File) (*Table, error) {
-	headerSizeBytes := make([]byte, 4)
+	headerSizeBytes := make([]byte, 8)
 
 	_, err := file.Read(headerSizeBytes)
 	if err != nil {
@@ -195,11 +191,8 @@ func readTableFile(file *os.File) (*Table, error) {
 		return nil, err
 	}
 
-	// first four bytes are the table header size
-	data := header[4:]
-
-	var table *Table
-	err = json.Unmarshal(data, table)
+	var table Table
+	err = json.Unmarshal(header, &table)
 	if err != nil {
 		return nil, err
 	}
@@ -214,8 +207,9 @@ func readTableFile(file *os.File) (*Table, error) {
 	}
 
 	table.fileSize = stat.Size()
+	table.rowCount = (uint64(table.fileSize) - table.headerByteCount) / table.rowByteCount
 
-	return table, nil
+	return &table, nil
 }
 
 // OpenTable returns a Table struct that tableReader and tableWriters can attach to. If table with given name does not
@@ -226,14 +220,17 @@ func OpenTable(name string) (*Table, error) {
 	f, err := os.OpenFile(path, os.O_RDWR, 0644)
 	if err != nil {
 		if os.IsNotExist(err) {
+			f.Close()
 			return nil, fmt.Errorf("table with name %s does not exist", name)
 		} else {
+			f.Close()
 			return nil, fmt.Errorf("could not open table file: %w", err)
 		}
 	}
 
 	table, err := readTableFile(f)
 	if err != nil {
+		f.Close()
 		return nil, fmt.Errorf("could not read table file: %w", err)
 	}
 

@@ -16,6 +16,7 @@ func isEmptyString(s string) bool {
 func cleanString(s string) string {
 	s = strings.ReplaceAll(s, "\n", " ")
 	s = strings.ReplaceAll(s, "  ", " ")
+	s = strings.ReplaceAll(s, ", ", ",")
 
 	return s
 }

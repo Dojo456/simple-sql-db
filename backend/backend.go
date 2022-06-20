@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"sync"
 )
 
@@ -15,14 +16,14 @@ import (
 type Primitive string
 
 const (
-	StringPrimitive Primitive = "string" // 256 runes max (1024 bytes)
-	IntPrimitive    Primitive = "int"    // int64 (8 bytes)
-	FloatPrimitive  Primitive = "float"  // float64 (8 bytes)
+	stringPrimitive Primitive = "string" // 256 runes max (1024 bytes)
+	intPrimitive    Primitive = "int"    // int64 (8 bytes)
+	floatPrimitive  Primitive = "float"  // float64 (8 bytes)
 )
 
 func (p Primitive) IsValid() bool {
 	switch p {
-	case StringPrimitive, IntPrimitive, FloatPrimitive:
+	case stringPrimitive, intPrimitive, floatPrimitive:
 		return true
 	}
 
@@ -31,9 +32,9 @@ func (p Primitive) IsValid() bool {
 
 func (p Primitive) Size() uint64 {
 	switch p {
-	case StringPrimitive:
+	case stringPrimitive:
 		return 1024
-	case IntPrimitive, FloatPrimitive:
+	case intPrimitive, floatPrimitive:
 		return 8
 	}
 
@@ -42,38 +43,46 @@ func (p Primitive) Size() uint64 {
 
 // Value is a single cell in a table. It allows type-safe operations between Go primitives and DB primitives.
 //
-// Do not create using struct literal, instead use either StringValue, IntValue, or FloatValue.
+// Do not create using struct literal, instead use either stringValue, IntValue, or FloatValue.
 type Value struct {
 	Type Primitive
 	Val  interface{}
 }
 
-func AsValue(i interface{}) (*Value, error) {
-	switch v := i.(type) {
-	case string:
-		return StringValue(v)
-	case int:
-		return &Value{
-			Type: IntPrimitive,
-			Val:  v,
-		}, nil
-	case float64:
-		return &Value{Type: FloatPrimitive, Val: v}, nil
-	}
-
-	return nil, nil
-}
-
-// StringValue returns a new value struct with Type StringPrimitive. If the provided string is longer than the max string
+// stringValue returns a new value struct with Type stringPrimitive. If the provided string is longer than the max string
 // length (256 runes), the string will be truncated.
-func StringValue(s string) (*Value, error) {
+func stringValue(s string) (Value, error) {
 	if len(s) > 256 {
 		s = s[:256]
 	}
 
-	return &Value{
-		Type: StringPrimitive,
+	return Value{
+		Type: stringPrimitive,
 		Val:  s,
+	}, nil
+}
+
+func intValue(s string) (Value, error) {
+	i, err := strconv.Atoi(s)
+	if err != nil {
+		return Value{}, err
+	}
+
+	return Value{
+		Type: intPrimitive,
+		Val:  int64(i),
+	}, nil
+}
+
+func floatValue(s string) (Value, error) {
+	f, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return Value{}, err
+	}
+
+	return Value{
+		Type: floatPrimitive,
+		Val:  f,
 	}, nil
 }
 

@@ -27,6 +27,9 @@ func (t *Table) InsertRow(vals []*Value) (int, error) {
 		b = append(b, val.Bytes()...)
 	}
 
+	// reslice b to be full length since each row must be of the same size
+	b = b[:cap(b)]
+
 	file := t.file
 	n, err := file.WriteAt(b, t.fileSize)
 	if err != nil {

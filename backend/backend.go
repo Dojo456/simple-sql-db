@@ -48,6 +48,22 @@ type Value struct {
 	Val  interface{}
 }
 
+func AsValue(i interface{}) (*Value, error) {
+	switch v := i.(type) {
+	case string:
+		return StringValue(v)
+	case int:
+		return &Value{
+			Type: IntPrimitive,
+			Val:  v,
+		}, nil
+	case float64:
+		return &Value{Type: FloatPrimitive, Val: v}, nil
+	}
+
+	return nil, nil
+}
+
 // StringValue returns a new value struct with Type StringPrimitive. If the provided string is longer than the max string
 // length (256 runes), the string will be truncated.
 func StringValue(s string) (*Value, error) {

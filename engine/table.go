@@ -78,25 +78,36 @@ func parseField(s string) (*backend.Field, error) {
 	}, nil
 }
 
-func (e *SQLEngine) insertRow(ctx context.Context) {
-	name := "table"
+func (e *SQLEngine) insertRow(ctx context.Context, args []interface{}) (int, error) {
+	name, ok := args[0].(string)
+	if !ok {
+		return 0, fmt.Errorf("name of table must be string")
+	}
+
+	// values is a string of values separated by commas
+	values := strings.Split(args[2].(string), ",")
+
+	vals := make([]*backend.Value, len(values))
+	for i, v := range values {
+		val, err := backend.AsValue(v)
+		if err != nil {
+			return 0, fmt.Errorf("could not format value: %w", err)
+		}
+
+		vals[i] = val
+	}
 
 	table, err := e.getTable(ctx, name)
 	if err != nil {
-		fmt.Println("could not open table file", err)
-		return
+		return 0, fmt.Errorf("could not open table file: %w", err)
 	}
 
-	_, err = table.InsertRow([]*backend.Value{
-		{
-			Type: backend.StringPrimitive,
-			Val:  "daniel",
-		},
-	})
+	count, err := table.InsertRow(vals)
 	if err != nil {
-		fmt.Println("could not open table file", err)
-		return
+		return 0, fmt.Errorf("could not open insert row: %w", err)
 	}
+
+	return count, nil
 }
 
 func (e *SQLEngine) getTable(ctx context.Context, name string) (*backend.Table, error) {

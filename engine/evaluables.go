@@ -49,12 +49,15 @@ func (e *executable) Value(ctx context.Context, engine *SQLEngine) (interface{},
 		{
 			returner, err = engine.createTable(ctx, argValues)
 			if err != nil {
-				return nil, fmt.Errorf("could not evaluate createTable: %w", err)
+				return nil, fmt.Errorf("could not createTable: %w", err)
 			}
 		}
 	case InsertCommand:
 		{
-			engine.insertRow(ctx)
+			returner, err = engine.insertRow(ctx, argValues)
+			if err != nil {
+				return nil, fmt.Errorf("could not insertRow: %w", err)
+			}
 		}
 	}
 

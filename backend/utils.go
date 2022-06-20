@@ -3,6 +3,7 @@ package backend
 import (
 	"encoding/binary"
 	"errors"
+	"math"
 	"os"
 )
 
@@ -50,15 +51,28 @@ func getFile(path string) (*os.File, error) {
 	}
 }
 
-// i32tob converts an uint32 to a byte slice of size 4
-func i32tob(val uint32) []byte {
+// i64tob converts an uint64 to a byte slice of size 4
+func i64tob(val uint64) []byte {
 	b := make([]byte, 4)
-	binary.LittleEndian.PutUint32(b, val)
+	binary.LittleEndian.PutUint64(b, val)
 
 	return b
 }
 
-// btoi32 converts a byte slice of size 4 to an uint32
-func btoi32(val []byte) uint32 {
-	return binary.LittleEndian.Uint32(val)
+// btoi64 converts a byte slice of size 4 to an uint64
+func btoi64(val []byte) uint64 {
+	return binary.LittleEndian.Uint64(val)
+}
+
+// f64tob converts a float64 to a byte slice of size 4
+func f64tob(val float64) []byte {
+	b := make([]byte, 4)
+	binary.LittleEndian.PutUint64(b, math.Float64bits(val))
+
+	return b
+}
+
+// btof64 converts a byte slice of size 4 to an uint64
+func btof64(val []byte) float64 {
+	return math.Float64frombits(binary.LittleEndian.Uint64(val))
 }

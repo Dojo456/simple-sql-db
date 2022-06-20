@@ -3,12 +3,18 @@ package engine
 import (
 	"context"
 	"fmt"
+	"github.com/Dojo456/simple-sql-db/backend"
 	"log"
 	"runtime/debug"
 	"strings"
 )
 
 type SQLEngine struct {
+	openTables []*backend.Table
+}
+
+type Cleanable interface {
+	Cleanup() error
 }
 
 // New returns a new engine instance that can then be used to execute SQL statements.
@@ -18,7 +24,7 @@ func New(ctx context.Context) (*SQLEngine, error) {
 
 // Execute parses then executes the given statement string. It will return a value if the executed statement requires
 // one. Else, the return value is nil.
-func (e SQLEngine) Execute(ctx context.Context, statement string) (interface{}, error) {
+func (e *SQLEngine) Execute(ctx context.Context, statement string) (interface{}, error) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Println("\nEngine panic recovered: %w", r)
@@ -72,4 +78,15 @@ func (e SQLEngine) Execute(ctx context.Context, statement string) (interface{}, 
 	}
 
 	return exec.Value(ctx)
+}
+
+func (e *SQLEngine) Cleanup() error {
+	for _, table := range e.openTables {
+		err := table.Cleanup()
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

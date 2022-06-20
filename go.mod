@@ -1,3 +1,3 @@
-module github.com/Dojo456/simple-inmem-db
+module github.com/Dojo456/simple-sql-db
 
 go 1.18

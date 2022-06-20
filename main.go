@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"github.com/Dojo456/simple-inmem-db/engine"
+	"github.com/Dojo456/simple-sql-db/engine"
 	"log"
 	"os"
 )
@@ -20,6 +20,13 @@ func main() {
 	if err != nil {
 		log.Fatalln(fmt.Errorf("could not intialize SQL Engine: %w", err))
 	}
+
+	defer func(sqlEngine *engine.SQLEngine) {
+		err := sqlEngine.Cleanup()
+		if err != nil {
+			log.Println(fmt.Errorf("SQL engine could not properly cleanup: %w", err))
+		}
+	}(sqlEngine)
 
 	for {
 		fmt.Println("\nenter command:")

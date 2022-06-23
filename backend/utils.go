@@ -57,17 +57,17 @@ func getFile(path string) (*os.File, error) {
 	}
 }
 
-// i64tob converts an uint64 to a byte slice of size 8
-func i64tob(val uint64) []byte {
+// i64tob converts an int64 to a byte slice of size 8
+func i64tob(val int64) []byte {
 	b := make([]byte, 8)
-	binary.LittleEndian.PutUint64(b, val)
+	binary.LittleEndian.PutUint64(b, uint64(val))
 
 	return b
 }
 
-// btoi64 converts a byte slice of size 8 to an uint64
-func btoi64(val []byte) uint64 {
-	return binary.LittleEndian.Uint64(val)
+// btoi64 converts a byte slice of size 8 to an int64
+func btoi64(val []byte) int64 {
+	return int64(binary.LittleEndian.Uint64(val))
 }
 
 // f64tob converts a float64 to a byte slice of size 4
@@ -78,7 +78,7 @@ func f64tob(val float64) []byte {
 	return b
 }
 
-// btof64 converts a byte slice of size 4 to an uint64
+// btof64 converts a byte slice of size 4 to a float64
 func btof64(val []byte) float64 {
 	return math.Float64frombits(binary.LittleEndian.Uint64(val))
 }

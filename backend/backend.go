@@ -30,7 +30,7 @@ func (p Primitive) IsValid() bool {
 	return false
 }
 
-func (p Primitive) Size() uint64 {
+func (p Primitive) Size() int64 {
 	switch p {
 	case stringPrimitive:
 		return 1024
@@ -41,52 +41,52 @@ func (p Primitive) Size() uint64 {
 	return 0
 }
 
-// Value is a single cell in a table. It allows type-safe operations between Go primitives and DB primitives.
+// value is a single cell in a table. It allows type-safe operations between Go primitives and DB primitives.
 //
 // Do not create using struct literal, instead use either stringValue, IntValue, or FloatValue.
-type Value struct {
+type value struct {
 	Type Primitive
 	Val  interface{}
 }
 
 // stringValue returns a new value struct with Type stringPrimitive. If the provided string is longer than the max string
 // length (256 runes), the string will be truncated.
-func stringValue(s string) (Value, error) {
+func stringValue(s string) (value, error) {
 	if len(s) > 256 {
 		s = s[:256]
 	}
 
-	return Value{
+	return value{
 		Type: stringPrimitive,
 		Val:  s,
 	}, nil
 }
 
-func intValue(s string) (Value, error) {
+func intValue(s string) (value, error) {
 	i, err := strconv.Atoi(s)
 	if err != nil {
-		return Value{}, err
+		return value{}, err
 	}
 
-	return Value{
+	return value{
 		Type: intPrimitive,
 		Val:  int64(i),
 	}, nil
 }
 
-func floatValue(s string) (Value, error) {
+func floatValue(s string) (value, error) {
 	f, err := strconv.ParseFloat(s, 64)
 	if err != nil {
-		return Value{}, err
+		return value{}, err
 	}
 
-	return Value{
+	return value{
 		Type: floatPrimitive,
 		Val:  f,
 	}, nil
 }
 
-func (v *Value) Bytes() []byte {
+func (v *value) Bytes() []byte {
 	switch val := v.Val.(type) {
 	case string:
 		return []byte(val)
@@ -108,10 +108,10 @@ type Field struct {
 type Table struct {
 	mrw             *sync.RWMutex
 	file            *os.File
-	fileSize        int64
-	headerByteCount uint64
-	rowByteCount    uint64
-	rowCount        uint64
+	fileByteCount   int64
+	headerByteCount int64
+	rowByteCount    int64
+	rowCount        int64
 	Name            string
 	Fields          []*Field
 }
@@ -181,16 +181,16 @@ func (t *Table) writeTableHeader() error {
 		return err
 	}
 
-	t.headerByteCount = uint64(headerByteCount)
-	t.fileSize = int64(headerByteCount)
+	t.headerByteCount = int64(headerByteCount)
+	t.fileByteCount = int64(headerByteCount)
 
 	return nil
 }
 
 // calculateRowSize calculates the numbers of bytes each row of the table takes. This should be called on table
 // initialization and stored into the Table struct.
-func calculateRowSize(fields []*Field) uint64 {
-	var sum uint64
+func calculateRowSize(fields []*Field) int64 {
+	var sum int64
 
 	for _, field := range fields {
 		sum += field.Type.Size()
@@ -231,8 +231,8 @@ func readTableFile(file *os.File) (*Table, error) {
 		return nil, fmt.Errorf("could not open file stats: %w", err)
 	}
 
-	table.fileSize = stat.Size()
-	table.rowCount = (uint64(table.fileSize) - table.headerByteCount) / table.rowByteCount
+	table.fileByteCount = stat.Size()
+	table.rowCount = (table.fileByteCount - table.headerByteCount) / table.rowByteCount
 
 	return &table, nil
 }

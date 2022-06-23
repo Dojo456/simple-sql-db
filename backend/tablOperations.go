@@ -1,10 +1,13 @@
 package backend
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+)
 
 // InsertRow adds a new row to the table with the given values. It will attempt to parse the values into the
 // correct primitive type, if it is unable to do so, an error will be returned. It returns the number of rows written
-func (t *Table) InsertRow(vals []string) (int, error) {
+func (t *Table) InsertRow(ctx context.Context, vals []string) (int, error) {
 	t.mrw.Lock()
 	defer t.mrw.Unlock()
 
@@ -21,7 +24,7 @@ func (t *Table) InsertRow(vals []string) (int, error) {
 		s := vals[i]
 		field := fields[i]
 
-		var val Value
+		var val value
 		var err error
 
 		switch field.Type {
@@ -44,12 +47,27 @@ func (t *Table) InsertRow(vals []string) (int, error) {
 	b = b[:cap(b)]
 
 	file := t.file
-	n, err := file.WriteAt(b, t.fileSize)
+	n, err := file.WriteAt(b, t.fileByteCount)
 	if err != nil {
 		return 0, fmt.Errorf("could not write to file: %w", err)
 	}
 
-	t.fileSize += int64(n)
+	t.fileByteCount += int64(n)
 
 	return 1, nil
+}
+
+// GetAllRows returns a two-dimensional string slice which represents all data within a table. Each cell is formatted
+// into a string use the standard format for string, int64, and float64.
+func (t *Table) GetAllRows(ctx context.Context) ([][]string, error) {
+	t.mrw.RLock()
+	defer t.mrw.RUnlock()
+
+	dataByteCount := t.fileByteCount - t.headerByteCount
+
+	dataBytes := make([]byte, dataByteCount)
+
+	t.file.ReadAt(dataBytes, t.headerByteCount)
+
+	return nil, nil
 }

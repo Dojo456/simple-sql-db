@@ -92,12 +92,49 @@ func (e *SQLEngine) insertRow(ctx context.Context, args []interface{}) (int, err
 		return 0, fmt.Errorf("could not open table file: %w", err)
 	}
 
-	count, err := table.InsertRow(values)
+	count, err := table.InsertRow(ctx, values)
 	if err != nil {
 		return 0, fmt.Errorf("could not open insert row: %w", err)
 	}
 
 	return count, nil
+}
+
+func (e *SQLEngine) getRows(ctx context.Context, name string) ([][]string, error) {
+	t, err := e.getTable(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := t.GetAllRows(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	returner := make([][]string, len(rows))
+
+	for i := 0; i < len(rows); i++ {
+		row := make([]string, len(t.Fields))
+
+		for j, cell := range rows[i] {
+			var cellString string
+
+			switch v := cell.Val.(type) {
+			case string:
+				cellString = v
+			case int64:
+				cellString = fmt.Sprintf("%d", v)
+			case float64:
+				cellString = fmt.Sprintf("%.4f", v)
+			}
+
+			row[j] = cellString
+		}
+
+		returner[i] = row
+	}
+
+	return returner, nil
 }
 
 func (e *SQLEngine) getTable(ctx context.Context, name string) (*backend.Table, error) {

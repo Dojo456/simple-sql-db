@@ -28,11 +28,11 @@ func (t *Table) InsertRow(ctx context.Context, vals []string) (int, error) {
 		var err error
 
 		switch field.Type {
-		case stringPrimitive:
+		case StringPrimitive:
 			val, err = stringValue(s)
-		case intPrimitive:
+		case IntPrimitive:
 			val, err = intValue(s)
-		case floatPrimitive:
+		case FloatPrimitive:
 			val, err = floatValue(s)
 		}
 
@@ -52,14 +52,16 @@ func (t *Table) InsertRow(ctx context.Context, vals []string) (int, error) {
 		return 0, fmt.Errorf("could not write to file: %w", err)
 	}
 
+	// increment cache values
 	t.fileByteCount += int64(n)
+	t.rowCount++
 
 	return 1, nil
 }
 
 // GetAllRows returns a two-dimensional string slice which represents all data within a table. Each cell is formatted
 // into a string use the standard format for string, int64, and float64.
-func (t *Table) GetAllRows(ctx context.Context) ([][]string, error) {
+func (t *Table) GetAllRows(ctx context.Context) ([][]value, error) {
 	t.mrw.RLock()
 	defer t.mrw.RUnlock()
 
@@ -67,7 +69,50 @@ func (t *Table) GetAllRows(ctx context.Context) ([][]string, error) {
 
 	dataBytes := make([]byte, dataByteCount)
 
-	t.file.ReadAt(dataBytes, t.headerByteCount)
+	n, err := t.file.ReadAt(dataBytes, t.headerByteCount)
+	if err != nil {
+		return nil, err
+	}
 
-	return nil, nil
+	if int64(n) != dataByteCount {
+		return nil, fmt.Errorf("corrupted file")
+	}
+
+	if t.rowByteCount*t.rowCount != int64(n) {
+		return nil, fmt.Errorf("corrupted cache")
+	}
+
+	returner := make([][]value, t.rowCount)
+
+	var cursor int64 = 0
+	var i int64 = 0
+	for ; i < t.rowCount; i++ {
+		row := make([]value, len(t.Fields))
+
+		for j, field := range t.Fields {
+			cellBytes := dataBytes[cursor : cursor+field.Type.Size()]
+
+			var cell interface{}
+
+			switch field.Type {
+			case StringPrimitive:
+				cell = string(cellBytes)
+			case FloatPrimitive:
+				cell = btof64(cellBytes)
+			case IntPrimitive:
+				cell = btoi64(cellBytes)
+			}
+
+			row[j] = value{
+				Type: field.Type,
+				Val:  cell,
+			}
+
+			cursor += field.Type.Size()
+		}
+
+		returner[i] = row
+	}
+
+	return returner, nil
 }

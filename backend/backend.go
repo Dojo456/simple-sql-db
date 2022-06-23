@@ -16,14 +16,14 @@ import (
 type Primitive string
 
 const (
-	stringPrimitive Primitive = "string" // 256 runes max (1024 bytes)
-	intPrimitive    Primitive = "int"    // int64 (8 bytes)
-	floatPrimitive  Primitive = "float"  // float64 (8 bytes)
+	StringPrimitive Primitive = "string" // 256 runes max (1024 bytes)
+	IntPrimitive    Primitive = "int"    // int64 (8 bytes)
+	FloatPrimitive  Primitive = "float"  // float64 (8 bytes)
 )
 
 func (p Primitive) IsValid() bool {
 	switch p {
-	case stringPrimitive, intPrimitive, floatPrimitive:
+	case StringPrimitive, IntPrimitive, FloatPrimitive:
 		return true
 	}
 
@@ -32,24 +32,25 @@ func (p Primitive) IsValid() bool {
 
 func (p Primitive) Size() int64 {
 	switch p {
-	case stringPrimitive:
+	case StringPrimitive:
 		return 1024
-	case intPrimitive, floatPrimitive:
+	case IntPrimitive, FloatPrimitive:
 		return 8
 	}
 
 	return 0
 }
 
-// value is a single cell in a table. It allows type-safe operations between Go primitives and DB primitives.
+// value is a single cell in a table. It allows type-safe operations between Go primitives and DB primitives (which is
+// represented using the Primitive type).
 //
-// Do not create using struct literal, instead use either stringValue, IntValue, or FloatValue.
+// Do not create using struct literal, instead use either stringValue, intValue, or floatValue.
 type value struct {
 	Type Primitive
 	Val  interface{}
 }
 
-// stringValue returns a new value struct with Type stringPrimitive. If the provided string is longer than the max string
+// stringValue returns a new value struct with Type StringPrimitive. If the provided string is longer than the max string
 // length (256 runes), the string will be truncated.
 func stringValue(s string) (value, error) {
 	if len(s) > 256 {
@@ -57,7 +58,7 @@ func stringValue(s string) (value, error) {
 	}
 
 	return value{
-		Type: stringPrimitive,
+		Type: StringPrimitive,
 		Val:  s,
 	}, nil
 }
@@ -69,7 +70,7 @@ func intValue(s string) (value, error) {
 	}
 
 	return value{
-		Type: intPrimitive,
+		Type: IntPrimitive,
 		Val:  int64(i),
 	}, nil
 }
@@ -81,7 +82,7 @@ func floatValue(s string) (value, error) {
 	}
 
 	return value{
-		Type: floatPrimitive,
+		Type: FloatPrimitive,
 		Val:  f,
 	}, nil
 }
@@ -91,7 +92,7 @@ func (v *value) Bytes() []byte {
 	case string:
 		return []byte(val)
 	case int64:
-		return i64tob(uint64(val))
+		return i64tob(val)
 	case float64:
 		return f64tob(val)
 	}
@@ -173,7 +174,7 @@ func (t *Table) writeTableHeader() error {
 	headerByteCount := len(data)
 
 	// begin header with an unsigned i64 that is the number of bytes of the table size, including the number itself
-	header := i64tob(uint64(headerByteCount))
+	header := i64tob(int64(headerByteCount + 8))
 	header = append(header, data...)
 
 	_, err = t.file.Write(header)
@@ -222,7 +223,7 @@ func readTableFile(file *os.File) (*Table, error) {
 		return nil, err
 	}
 
-	table.headerByteCount = headerSize
+	table.headerByteCount = headerSize + 8
 	table.file = file
 	table.rowByteCount = calculateRowSize(table.Fields)
 

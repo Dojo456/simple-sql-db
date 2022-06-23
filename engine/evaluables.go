@@ -59,6 +59,14 @@ func (e *executable) Value(ctx context.Context, engine *SQLEngine) (interface{},
 				return nil, fmt.Errorf("could not insertRow: %w", err)
 			}
 		}
+	case SelectCommand:
+		{
+			returner, err = engine.getRows(ctx, "multi")
+		}
+	}
+
+	if err != nil {
+		return nil, err
 	}
 
 	return returner, nil

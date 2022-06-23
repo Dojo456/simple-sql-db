@@ -297,6 +297,7 @@ func (c command) captureArguments(tokens []token, start int) (args []evaluable, 
 		args, argsCaptured, err = captureCreateTableArgs(truncated)
 	case InsertCommand:
 		args, argsCaptured, err = captureInsertArgs(truncated)
+	case SelectCommand:
 	}
 
 	if err != nil {

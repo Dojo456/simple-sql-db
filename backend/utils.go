@@ -3,6 +3,7 @@ package backend
 import (
 	"encoding/binary"
 	"errors"
+	"log"
 	"math"
 	"os"
 	"strings"
@@ -12,6 +13,16 @@ var fileAlreadyExistsError error = errors.New("file already exists")
 
 // createFile creates a file at the given path. It will throw an error if the file already exists
 func createFile(path string) (*os.File, error) {
+	// check if database directory exists
+	dirPath := "database"
+	if _, err := os.Stat(dirPath); errors.Is(err, os.ErrNotExist) {
+		err := os.Mkdir(dirPath, os.ModePerm)
+		if err != nil {
+			log.Println(err)
+			return nil, err
+		}
+	}
+
 	// check if file exists
 	exists := true
 
@@ -95,15 +106,15 @@ func bToI64(val []byte) int64 {
 	return int64(binary.LittleEndian.Uint64(val))
 }
 
-// f64ToB converts a float64 to a byte slice of size 4
+// f64ToB converts a float64 to a byte slice of size 8
 func f64ToB(val float64) []byte {
-	b := make([]byte, 4)
+	b := make([]byte, 8)
 	binary.LittleEndian.PutUint64(b, math.Float64bits(val))
 
 	return b
 }
 
-// bToF64 converts a byte slice of size 4 to a float64
+// bToF64 converts a byte slice of size 8 to a float64
 func bToF64(val []byte) float64 {
 	return math.Float64frombits(binary.LittleEndian.Uint64(val))
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/Dojo456/simple-sql-db/backend"
+	"strconv"
 	"strings"
 )
 
@@ -152,7 +153,7 @@ func (e *SQLEngine) getRows(ctx context.Context, args []interface{}) ([][]string
 			case int64:
 				cellString = fmt.Sprintf("%d", v)
 			case float64:
-				cellString = fmt.Sprintf("%.4f", v)
+				cellString = strconv.FormatFloat(v, 'f', -1, 64)
 			}
 
 			row[j] = cellString

@@ -210,7 +210,7 @@ func readTableFile(file *os.File) (*Table, error) {
 	}
 
 	headerSize := btoi64(headerSizeBytes)
-	header := make([]byte, headerSize)
+	header := make([]byte, headerSize-8)
 
 	_, err = file.Read(header)
 	if err != nil {
@@ -223,7 +223,7 @@ func readTableFile(file *os.File) (*Table, error) {
 		return nil, err
 	}
 
-	table.headerByteCount = headerSize + 8
+	table.headerByteCount = headerSize
 	table.file = file
 	table.rowByteCount = calculateRowSize(table.Fields)
 

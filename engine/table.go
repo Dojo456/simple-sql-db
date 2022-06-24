@@ -10,7 +10,7 @@ import (
 func (e *SQLEngine) createTable(ctx context.Context, args []interface{}) (*backend.Table, error) {
 	// two args are needed, first the name then the fields as a parenthesis group
 	if len(args) != 2 {
-		return nil, fmt.Errorf("wrong number of arguments for CreateTable: expected 2 args, received %d", len(args))
+		return nil, fmt.Errorf("expected 2 arguments, received %d", len(args))
 	}
 
 	name, ok := args[0].(string)
@@ -100,15 +100,42 @@ func (e *SQLEngine) insertRow(ctx context.Context, args []interface{}) (int, err
 	return count, nil
 }
 
-func (e *SQLEngine) getRows(ctx context.Context, name string) ([][]string, error) {
+func (e *SQLEngine) getRows(ctx context.Context, args []interface{}) ([][]string, error) {
+	if len(args) < 2 {
+		return nil, fmt.Errorf("not enough arguments")
+	}
+
+	iFields := args[:len(args)-1]
+
+	fields := make([]string, len(iFields))
+	for i, iField := range iFields {
+		field, ok := iField.(string)
+		if !ok {
+			return nil, fmt.Errorf("field name must be string")
+		}
+
+		fields[i] = field
+	}
+
+	// name is last argument
+	iName := args[len(args)-1]
+	name, ok := iName.(string)
+	if !ok {
+		return nil, fmt.Errorf("name of table must be string")
+	}
+
 	t, err := e.getTable(ctx, name)
 	if err != nil {
 		return nil, err
 	}
 
-	rows, err := t.GetAllRows(ctx)
-	if err != nil {
-		return nil, err
+	var rows [][]backend.Value
+
+	if fields[0] == "*" {
+		rows, err = t.GetAllRows(ctx)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	returner := make([][]string, len(rows))

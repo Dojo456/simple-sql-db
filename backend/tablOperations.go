@@ -24,7 +24,7 @@ func (t *Table) InsertRow(ctx context.Context, vals []string) (int, error) {
 		s := vals[i]
 		field := fields[i]
 
-		var val value
+		var val Value
 		var err error
 
 		switch field.Type {
@@ -61,7 +61,7 @@ func (t *Table) InsertRow(ctx context.Context, vals []string) (int, error) {
 
 // GetAllRows returns a two-dimensional string slice which represents all data within a table. Each cell is formatted
 // into a string use the standard format for string, int64, and float64.
-func (t *Table) GetAllRows(ctx context.Context) ([][]value, error) {
+func (t *Table) GetAllRows(ctx context.Context) ([][]Value, error) {
 	t.mrw.RLock()
 	defer t.mrw.RUnlock()
 
@@ -82,12 +82,12 @@ func (t *Table) GetAllRows(ctx context.Context) ([][]value, error) {
 		return nil, fmt.Errorf("corrupted cache")
 	}
 
-	returner := make([][]value, t.rowCount)
+	returner := make([][]Value, t.rowCount)
 
 	var cursor int64 = 0
 	var i int64 = 0
 	for ; i < t.rowCount; i++ {
-		row := make([]value, len(t.Fields))
+		row := make([]Value, len(t.Fields))
 
 		for j, field := range t.Fields {
 			cellBytes := dataBytes[cursor : cursor+field.Type.Size()]
@@ -103,7 +103,7 @@ func (t *Table) GetAllRows(ctx context.Context) ([][]value, error) {
 				cell = btoi64(cellBytes)
 			}
 
-			row[j] = value{
+			row[j] = Value{
 				Type: field.Type,
 				Val:  cell,
 			}

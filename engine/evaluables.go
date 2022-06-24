@@ -61,7 +61,7 @@ func (e *executable) Value(ctx context.Context, engine *SQLEngine) (interface{},
 		}
 	case SelectCommand:
 		{
-			returner, err = engine.getRows(ctx, "multi")
+			returner, err = engine.getRows(ctx, argValues)
 		}
 	}
 

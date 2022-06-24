@@ -41,53 +41,53 @@ func (p Primitive) Size() int64 {
 	return 0
 }
 
-// value is a single cell in a table. It allows type-safe operations between Go primitives and DB primitives (which is
+// Value is a single cell in a table. It allows type-safe operations between Go primitives and DB primitives (which is
 // represented using the Primitive type).
 //
 // Do not create using struct literal, instead use either stringValue, intValue, or floatValue.
-type value struct {
+type Value struct {
 	Type Primitive
 	Val  interface{}
 }
 
-// stringValue returns a new value struct with Type StringPrimitive. If the provided string is longer than the max string
+// stringValue returns a new Value struct with Type StringPrimitive. If the provided string is longer than the max string
 // length (256 runes), the string will be truncated.
-func stringValue(s string) (value, error) {
+func stringValue(s string) (Value, error) {
 	if len(s) > 256 {
 		s = s[:256]
 	}
 
-	return value{
+	return Value{
 		Type: StringPrimitive,
 		Val:  s,
 	}, nil
 }
 
-func intValue(s string) (value, error) {
+func intValue(s string) (Value, error) {
 	i, err := strconv.Atoi(s)
 	if err != nil {
-		return value{}, err
+		return Value{}, err
 	}
 
-	return value{
+	return Value{
 		Type: IntPrimitive,
 		Val:  int64(i),
 	}, nil
 }
 
-func floatValue(s string) (value, error) {
+func floatValue(s string) (Value, error) {
 	f, err := strconv.ParseFloat(s, 64)
 	if err != nil {
-		return value{}, err
+		return Value{}, err
 	}
 
-	return value{
+	return Value{
 		Type: FloatPrimitive,
 		Val:  f,
 	}, nil
 }
 
-func (v *value) Bytes() []byte {
+func (v *Value) Bytes() []byte {
 	switch val := v.Val.(type) {
 	case string:
 		return []byte(val)
@@ -171,10 +171,10 @@ func (t *Table) writeTableHeader() error {
 		return fmt.Errorf("could not encode table metadata: %w", err)
 	}
 
-	headerByteCount := len(data)
+	headerByteCount := len(data) + 8
 
 	// begin header with an unsigned i64 that is the number of bytes of the table size, including the number itself
-	header := i64tob(int64(headerByteCount + 8))
+	header := i64tob(int64(headerByteCount))
 	header = append(header, data...)
 
 	_, err = t.file.Write(header)

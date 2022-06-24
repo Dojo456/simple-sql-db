@@ -298,6 +298,7 @@ func (c command) captureArguments(tokens []token, start int) (args []evaluable, 
 	case InsertCommand:
 		args, argsCaptured, err = captureInsertArgs(truncated)
 	case SelectCommand:
+		args, argsCaptured, err = captureSelectCommand(truncated)
 	}
 
 	if err != nil {
@@ -360,4 +361,25 @@ func captureInsertArgs(truncated []token) ([]evaluable, int, error) {
 	args = append(args, asValue(values.s))
 
 	return args, 3, nil
+}
+
+func captureSelectCommand(truncated []token) ([]evaluable, int, error) {
+	var fields []evaluable
+
+	i := 0
+	for l := len(truncated); i < l; i++ {
+		c := truncated[i]
+		if c.s == string(FromKeyword) {
+			break
+		}
+
+		fields = append(fields, value{
+			val: c.s,
+		})
+	}
+
+	name := truncated[i+1].s
+	fields = append(fields, value{val: name})
+
+	return fields, len(fields) + 1, nil
 }

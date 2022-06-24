@@ -90,11 +90,11 @@ func floatValue(s string) (Value, error) {
 func (v *Value) Bytes() []byte {
 	switch val := v.Val.(type) {
 	case string:
-		return []byte(val)
+		return sToB(val)
 	case int64:
-		return i64tob(val)
+		return i64ToB(val)
 	case float64:
-		return f64tob(val)
+		return f64ToB(val)
 	}
 
 	return nil
@@ -174,7 +174,7 @@ func (t *Table) writeTableHeader() error {
 	headerByteCount := len(data) + 8
 
 	// begin header with an unsigned i64 that is the number of bytes of the table size, including the number itself
-	header := i64tob(int64(headerByteCount))
+	header := i64ToB(int64(headerByteCount))
 	header = append(header, data...)
 
 	_, err = t.file.Write(header)
@@ -209,7 +209,7 @@ func readTableFile(file *os.File) (*Table, error) {
 		return nil, err
 	}
 
-	headerSize := btoi64(headerSizeBytes)
+	headerSize := bToI64(headerSizeBytes)
 	header := make([]byte, headerSize-8)
 
 	_, err = file.Read(header)

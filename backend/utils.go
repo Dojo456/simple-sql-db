@@ -5,6 +5,7 @@ import (
 	"errors"
 	"math"
 	"os"
+	"strings"
 )
 
 var fileAlreadyExistsError error = errors.New("file already exists")
@@ -57,28 +58,52 @@ func getFile(path string) (*os.File, error) {
 	}
 }
 
-// i64tob converts an int64 to a byte slice of size 8
-func i64tob(val int64) []byte {
+// sToB converts a string to a byte slice of size 1024
+func sToB(val string) []byte {
+	returner := make([]byte, 0, 1024)
+
+	returner = append(returner, []byte(val)...)
+
+	return returner[:1024]
+}
+
+// bToS converts a byte slice of size 1024 to a string
+func bToS(val []byte) string {
+	var builder strings.Builder
+
+	for _, b := range val {
+		if b == 0 {
+			break
+		}
+
+		builder.WriteByte(b)
+	}
+
+	return builder.String()
+}
+
+// i64ToB converts an int64 to a byte slice of size 8
+func i64ToB(val int64) []byte {
 	b := make([]byte, 8)
 	binary.LittleEndian.PutUint64(b, uint64(val))
 
 	return b
 }
 
-// btoi64 converts a byte slice of size 8 to an int64
-func btoi64(val []byte) int64 {
+// bToI64 converts a byte slice of size 8 to an int64
+func bToI64(val []byte) int64 {
 	return int64(binary.LittleEndian.Uint64(val))
 }
 
-// f64tob converts a float64 to a byte slice of size 4
-func f64tob(val float64) []byte {
+// f64ToB converts a float64 to a byte slice of size 4
+func f64ToB(val float64) []byte {
 	b := make([]byte, 4)
 	binary.LittleEndian.PutUint64(b, math.Float64bits(val))
 
 	return b
 }
 
-// btof64 converts a byte slice of size 4 to a float64
-func btof64(val []byte) float64 {
+// bToF64 converts a byte slice of size 4 to a float64
+func bToF64(val []byte) float64 {
 	return math.Float64frombits(binary.LittleEndian.Uint64(val))
 }

@@ -96,11 +96,11 @@ func (t *Table) GetAllRows(ctx context.Context) ([][]Value, error) {
 
 			switch field.Type {
 			case StringPrimitive:
-				cell = string(cellBytes)
+				cell = bToS(cellBytes)
 			case FloatPrimitive:
-				cell = btof64(cellBytes)
+				cell = bToF64(cellBytes)
 			case IntPrimitive:
-				cell = btoi64(cellBytes)
+				cell = bToI64(cellBytes)
 			}
 
 			row[j] = Value{

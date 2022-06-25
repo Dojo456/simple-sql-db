@@ -39,13 +39,13 @@ func (e *SQLEngine) createTable(ctx context.Context, args []interface{}) (*backe
 	return table, nil
 }
 
-func parseTableFields(s string) ([]*backend.Field, error) {
+func parseTableFields(s string) ([]backend.Field, error) {
 	// the cleaned string should have the outer parenthesis removed and no newlines or redundant whitespaces
 	// fields in a CREATE TABLE statement are separated by commas
 	s = cleanString(s)
 
 	rawFields := strings.Split(s, ",")
-	parsedFields := make([]*backend.Field, len(rawFields))
+	parsedFields := make([]backend.Field, len(rawFields))
 
 	for i, rf := range rawFields {
 		f, err := parseField(rf)
@@ -59,21 +59,21 @@ func parseTableFields(s string) ([]*backend.Field, error) {
 	return parsedFields, nil
 }
 
-func parseField(s string) (*backend.Field, error) {
+func parseField(s string) (backend.Field, error) {
 	// name and data type are separated by space per field
 	tokens := strings.Split(s, " ")
 	if len(tokens) != 2 {
-		return nil, fmt.Errorf("%s is not acceptable", s)
+		return backend.Field{}, fmt.Errorf("%s is not acceptable", s)
 	}
 
 	name := tokens[0]
 	dataType := backend.Primitive(strings.ToLower(tokens[1]))
 
 	if !dataType.IsValid() {
-		return nil, fmt.Errorf("%s is not a valid data type", dataType)
+		return backend.Field{}, fmt.Errorf("%s is not a valid data type", dataType)
 	}
 
-	return &backend.Field{
+	return backend.Field{
 		Name: name,
 		Type: dataType,
 	}, nil
@@ -86,11 +86,25 @@ func (e *SQLEngine) insertRow(ctx context.Context, args []interface{}) (int, err
 	}
 
 	// values is a string of values separated by commas
-	values := strings.Split(args[2].(string), ",")
+	sValues := strings.Split(args[2].(string), ",")
 
 	table, err := e.getTable(ctx, name)
 	if err != nil {
 		return 0, fmt.Errorf("could not open table file: %w", err)
+	}
+
+	tFields := table.Fields
+
+	values := make([]backend.Value, len(sValues))
+	for i, sVal := range sValues {
+		field := tFields[i]
+
+		val, err := field.NewValue(sVal)
+		if err != nil {
+			return 0, fmt.Errorf("error with %s.%s: %w", table.Name, field.Name, err)
+		}
+
+		values[i] = *val
 	}
 
 	count, err := table.InsertRow(ctx, values)
@@ -99,6 +113,30 @@ func (e *SQLEngine) insertRow(ctx context.Context, args []interface{}) (int, err
 	}
 
 	return count, nil
+}
+
+type comparisonOperator string
+
+const (
+	comparisonOperatorEqual       comparisonOperator = "="
+	comparisonOperatorNotEqual    comparisonOperator = "!="
+	comparisonOperatorLessThan    comparisonOperator = "<"
+	comparisonOperatorGreaterThan comparisonOperator = ">"
+)
+
+func (o comparisonOperator) IsValid() bool {
+	switch o {
+	case comparisonOperatorEqual, comparisonOperatorNotEqual, comparisonOperatorLessThan, comparisonOperatorGreaterThan:
+		return true
+	}
+
+	return false
+}
+
+type whereFilter struct {
+	fieldName string
+	operator  comparisonOperator
+	value     string
 }
 
 func (e *SQLEngine) getRows(ctx context.Context, args []interface{}) ([][]string, error) {
@@ -133,7 +171,7 @@ func (e *SQLEngine) getRows(ctx context.Context, args []interface{}) ([][]string
 	var rows [][]backend.Value
 
 	if fields[0] == "*" {
-		rows, err = t.GetAllRows(ctx)
+		rows, err = t.GetAllRows(ctx, []string{})
 		if err != nil {
 			return nil, err
 		}

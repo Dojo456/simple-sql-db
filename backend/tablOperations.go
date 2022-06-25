@@ -8,9 +8,6 @@ import (
 // InsertRow adds a new row to the table with the given values. It will attempt to parse the values into the
 // correct primitive type, if it is unable to do so, an error will be returned. It returns the number of rows written
 func (t *Table) InsertRow(ctx context.Context, vals []Value) (int, error) {
-	t.mrw.Lock()
-	defer t.mrw.Unlock()
-
 	fields := t.Fields
 
 	if len(fields) < len(vals) {
@@ -26,6 +23,9 @@ func (t *Table) InsertRow(ctx context.Context, vals []Value) (int, error) {
 
 	// reslice b to be full length since each row must be of the same size
 	b = b[:cap(b)]
+
+	t.mrw.Lock()
+	defer t.mrw.Unlock()
 
 	file := t.file
 	n, err := file.WriteAt(b, t.fileByteCount)
@@ -80,8 +80,8 @@ func (t *Table) GetAllRows(ctx context.Context, fields []string) ([][]Value, err
 	dataBytes := make([]byte, dataByteCount)
 
 	// begin file operations
-	t.mrw.Lock()
-	defer t.mrw.Unlock()
+	t.mrw.RLock()
+	defer t.mrw.RUnlock()
 
 	n, err := t.file.ReadAt(dataBytes, t.headerByteCount)
 	if err != nil {

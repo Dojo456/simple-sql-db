@@ -170,7 +170,7 @@ func (e *SQLEngine) getRows(ctx context.Context, args []interface{}) ([][]string
 
 			switch v := cell.Val.(type) {
 			case string:
-				cellString = v
+				cellString = fmt.Sprintf(`"%s"`, v)
 			case int64:
 				cellString = fmt.Sprintf("%d", v)
 			case float64:

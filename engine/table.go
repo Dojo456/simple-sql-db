@@ -39,13 +39,13 @@ func (e *SQLEngine) createTable(ctx context.Context, args []interface{}) (*backe
 	return table, nil
 }
 
-func parseTableFields(s string) ([]*backend.Field, error) {
+func parseTableFields(s string) ([]backend.Field, error) {
 	// the cleaned string should have the outer parenthesis removed and no newlines or redundant whitespaces
 	// fields in a CREATE TABLE statement are separated by commas
 	s = cleanString(s)
 
 	rawFields := strings.Split(s, ",")
-	parsedFields := make([]*backend.Field, len(rawFields))
+	parsedFields := make([]backend.Field, len(rawFields))
 
 	for i, rf := range rawFields {
 		f, err := parseField(rf)
@@ -59,21 +59,21 @@ func parseTableFields(s string) ([]*backend.Field, error) {
 	return parsedFields, nil
 }
 
-func parseField(s string) (*backend.Field, error) {
+func parseField(s string) (backend.Field, error) {
 	// name and data type are separated by space per field
 	tokens := strings.Split(s, " ")
 	if len(tokens) != 2 {
-		return nil, fmt.Errorf("%s is not acceptable", s)
+		return backend.Field{}, fmt.Errorf("%s is not acceptable", s)
 	}
 
 	name := tokens[0]
 	dataType := backend.Primitive(strings.ToLower(tokens[1]))
 
 	if !dataType.IsValid() {
-		return nil, fmt.Errorf("%s is not a valid data type", dataType)
+		return backend.Field{}, fmt.Errorf("%s is not a valid data type", dataType)
 	}
 
-	return &backend.Field{
+	return backend.Field{
 		Name: name,
 		Type: dataType,
 	}, nil
@@ -133,7 +133,12 @@ func (e *SQLEngine) getRows(ctx context.Context, args []interface{}) ([][]string
 	var rows [][]backend.Value
 
 	if fields[0] == "*" {
-		rows, err = t.GetAllRows(ctx)
+		rows, err = t.GetAllRows(ctx, nil)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		rows, err = t.GetAllRows(ctx, fields)
 		if err != nil {
 			return nil, err
 		}
@@ -142,7 +147,9 @@ func (e *SQLEngine) getRows(ctx context.Context, args []interface{}) ([][]string
 	returner := make([][]string, len(rows))
 
 	for i := 0; i < len(rows); i++ {
-		row := make([]string, len(t.Fields))
+		valRow := rows[i]
+
+		row := make([]string, len(valRow))
 
 		for j, cell := range rows[i] {
 			var cellString string

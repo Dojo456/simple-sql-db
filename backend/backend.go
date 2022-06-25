@@ -114,7 +114,7 @@ type Table struct {
 	rowByteCount    int64
 	rowCount        int64
 	Name            string
-	Fields          []*Field
+	Fields          []Field
 }
 
 func (t *Table) Cleanup() error {
@@ -126,7 +126,7 @@ func getTableFilePath(name string) string {
 }
 
 // CreateTable creates a table and returns the table corresponding table struct.
-func CreateTable(ctx context.Context, name string, fields []*Field) (*Table, error) {
+func CreateTable(ctx context.Context, name string, fields []Field) (*Table, error) {
 	path := getTableFilePath(name)
 
 	file, err := createFile(path)
@@ -190,7 +190,7 @@ func (t *Table) writeTableHeader() error {
 
 // calculateRowSize calculates the numbers of bytes each row of the table takes. This should be called on table
 // initialization and stored into the Table struct.
-func calculateRowSize(fields []*Field) int64 {
+func calculateRowSize(fields []Field) int64 {
 	var sum int64
 
 	for _, field := range fields {

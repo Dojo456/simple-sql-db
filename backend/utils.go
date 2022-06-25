@@ -11,6 +11,29 @@ import (
 
 var fileAlreadyExistsError error = errors.New("file already exists")
 
+// exclusive returns the elements that are in s1 but not in s2
+func exclusive[T comparable](s1 []T, s2 []T) []T {
+	var returner []T
+
+	for _, e := range s1 {
+		if !contains(s2, e) {
+			returner = append(returner, e)
+		}
+	}
+
+	return returner
+}
+
+func contains[T comparable](slice []T, element T) bool {
+	for _, t := range slice {
+		if t == element {
+			return true
+		}
+	}
+
+	return false
+}
+
 // createFile creates a file at the given path. It will throw an error if the file already exists
 func createFile(path string) (*os.File, error) {
 	// check if database directory exists

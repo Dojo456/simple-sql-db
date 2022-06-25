@@ -367,15 +367,20 @@ func captureSelectCommand(truncated []token) ([]evaluable, int, error) {
 	var fields []evaluable
 
 	i := 0
+
 	for l := len(truncated); i < l; i++ {
 		c := truncated[i]
 		if c.s == string(FromKeyword) {
 			break
 		}
 
-		fields = append(fields, value{
-			val: c.s,
-		})
+		split := strings.Split(c.s, ",")
+
+		for _, t := range split {
+			fields = append(fields, value{
+				val: t,
+			})
+		}
 	}
 
 	name := truncated[i+1].s

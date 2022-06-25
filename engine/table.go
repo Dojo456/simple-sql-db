@@ -86,11 +86,25 @@ func (e *SQLEngine) insertRow(ctx context.Context, args []interface{}) (int, err
 	}
 
 	// values is a string of values separated by commas
-	values := strings.Split(args[2].(string), ",")
+	sValues := strings.Split(args[2].(string), ",")
 
 	table, err := e.getTable(ctx, name)
 	if err != nil {
 		return 0, fmt.Errorf("could not open table file: %w", err)
+	}
+
+	tFields := table.Fields
+
+	values := make([]backend.Value, len(sValues))
+	for i, sVal := range sValues {
+		field := tFields[i]
+
+		val, err := field.NewValue(sVal)
+		if err != nil {
+			return 0, fmt.Errorf("error with %s.%s: %w", table.Name, field.Name, err)
+		}
+
+		values[i] = *val
 	}
 
 	count, err := table.InsertRow(ctx, values)

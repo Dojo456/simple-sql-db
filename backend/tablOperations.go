@@ -43,12 +43,45 @@ func (t *Table) InsertRow(ctx context.Context, vals []Value) (int, error) {
 // GetAllRows returns the selected fields from a table in a two-dimensional string slice which represents all rows
 // within a table.
 func (t *Table) GetAllRows(ctx context.Context, fields []string) ([][]Value, error) {
-	t.mrw.RLock()
-	defer t.mrw.RUnlock()
+	shouldSelectField := make([]bool, len(t.Fields))
+	fieldsToSelectCount := 0
+
+	// there is a filter for fields
+	if len(fields) != 0 {
+		tFieldNames := make([]string, len(t.Fields))
+		for i, field := range t.Fields {
+			tFieldNames[i] = field.Name
+		}
+
+		for i, field := range tFieldNames {
+			if contains[string](fields, field) {
+				shouldSelectField[i] = true
+				fieldsToSelectCount++
+			} else {
+				shouldSelectField[i] = false
+			}
+		}
+
+		if fieldsToSelectCount != len(fields) {
+			e := exclusive[string](fields, tFieldNames)[0]
+
+			return nil, fmt.Errorf("%s.%s does not exist", t.Name, e)
+		}
+	} else {
+		for i := 0; i < len(t.Fields); i++ {
+			shouldSelectField[i] = true
+		}
+
+		fieldsToSelectCount = len(t.Fields)
+	}
 
 	dataByteCount := t.fileByteCount - t.headerByteCount
 
 	dataBytes := make([]byte, dataByteCount)
+
+	// begin file operations
+	t.mrw.Lock()
+	defer t.mrw.Unlock()
 
 	n, err := t.file.ReadAt(dataBytes, t.headerByteCount)
 	if err != nil {
@@ -68,25 +101,24 @@ func (t *Table) GetAllRows(ctx context.Context, fields []string) ([][]Value, err
 	var cursor int64 = 0
 	var i int64 = 0
 	for ; i < t.rowCount; i++ {
-		row := make([]Value, len(t.Fields))
+		row := make([]Value, 0, fieldsToSelectCount)
 
 		for j, field := range t.Fields {
-			cellBytes := dataBytes[cursor : cursor+field.Type.Size()]
-
-			var cell interface{}
-
-			switch field.Type {
-			case StringPrimitive:
-				cell = bToS(cellBytes)
-			case FloatPrimitive:
-				cell = bToF64(cellBytes)
-			case IntPrimitive:
-				cell = bToI64(cellBytes)
-			}
-
-			row[j] = Value{
-				Type: field.Type,
-				Val:  cell,
+			if shouldSelectField[j] {
+				cellBytes := dataBytes[cursor : cursor+field.Type.Size()]
+				var cell interface{}
+				switch field.Type {
+				case StringPrimitive:
+					cell = bToS(cellBytes)
+				case FloatPrimitive:
+					cell = bToF64(cellBytes)
+				case IntPrimitive:
+					cell = bToI64(cellBytes)
+				}
+				row = append(row, Value{
+					Type: field.Type,
+					Val:  cell,
+				})
 			}
 
 			cursor += field.Type.Size()

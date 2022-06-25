@@ -44,10 +44,11 @@ func (p Primitive) Size() int64 {
 // Value is a single cell in a table. It allows type-safe operations between Go primitives and DB primitives (which is
 // represented using the Primitive type).
 //
-// Do not create using struct literal, instead use either stringValue, intValue, or floatValue.
+// Do not create using struct literal, instead use the NewValue method on the Field type.
 type Value struct {
-	Type Primitive
-	Val  interface{}
+	Type      Primitive
+	Val       interface{}
+	FieldName string
 }
 
 // stringValue returns a new Value struct with Type StringPrimitive. If the provided string is longer than the max string
@@ -104,6 +105,73 @@ func (v *Value) Bytes() []byte {
 type Field struct {
 	Name string
 	Type Primitive
+}
+
+// NewValue creates a Value for the Field. This is the preferred way to create a Value struct. If the val is
+// of the correct Go type for that field, it will be entered directly. If it is of string type and the field is not,
+// it will attempt to parse the value into the correct type.
+func (field Field) NewValue(val interface{}) (*Value, error) {
+	switch field.Type {
+	case StringPrimitive:
+		{
+			s, ok := val.(string)
+			if !ok {
+				return nil, fmt.Errorf("must be string")
+			}
+			return &Value{
+				Type:      StringPrimitive,
+				Val:       s,
+				FieldName: field.Name,
+			}, nil
+		}
+
+	case IntPrimitive:
+		{
+			i, ok := val.(int64)
+			if !ok {
+				s, ok := val.(string)
+				if !ok {
+					return nil, fmt.Errorf("could not parse int")
+				}
+
+				sI, err := strconv.Atoi(s)
+				if err != nil {
+					return nil, fmt.Errorf("could not parse int")
+				}
+
+				i = int64(sI)
+			}
+			return &Value{
+				Type:      IntPrimitive,
+				Val:       i,
+				FieldName: field.Name,
+			}, nil
+		}
+	case FloatPrimitive:
+		{
+			f, ok := val.(float64)
+			if !ok {
+				s, ok := val.(string)
+				if !ok {
+					return nil, fmt.Errorf("could not parse float")
+				}
+
+				sF, err := strconv.ParseFloat(s, 64)
+				if err != nil {
+					return nil, fmt.Errorf("could not parse float")
+				}
+
+				f = sF
+			}
+			return &Value{
+				Type:      FloatPrimitive,
+				Val:       f,
+				FieldName: field.Name,
+			}, nil
+		}
+	}
+
+	return nil, nil
 }
 
 type Table struct {

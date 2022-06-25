@@ -48,27 +48,6 @@ func createFile(path string) (*os.File, error) {
 	}
 }
 
-// getFile opens and returns the file at the given path. If the file does not exist, it will be created
-func getFile(path string) (*os.File, error) {
-	// check if file exists
-	file, err := os.Open(path)
-	if err == nil && file != nil {
-		return file, err
-	}
-
-	// create file if not exists
-	if os.IsNotExist(err) {
-		file, err = os.Create(path)
-		if err != nil {
-			return nil, err
-		}
-
-		return file, nil
-	} else {
-		return nil, err
-	}
-}
-
 // sToB converts a string to a byte slice of size 1024
 func sToB(val string) []byte {
 	returner := make([]byte, 0, 1024)

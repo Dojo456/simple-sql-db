@@ -414,6 +414,7 @@ func captureSelectArgs(truncated []token) ([]evaluable, int, error) {
 	i := 0
 	keywordsCaptured := 0
 
+	var fields []string
 	for l := len(truncated); i < l; i++ {
 		c := truncated[i]
 		if strings.ToLower(c.s) == string(KeywordFrom) {
@@ -423,12 +424,9 @@ func captureSelectArgs(truncated []token) ([]evaluable, int, error) {
 
 		split := strings.Split(c.s, ",")
 
-		for _, t := range split {
-			args = append(args, value{
-				val: t,
-			})
-		}
+		fields = append(fields, split...)
 	}
+	args = append(args, value{val: fields})
 
 	i++
 	name := truncated[i].s

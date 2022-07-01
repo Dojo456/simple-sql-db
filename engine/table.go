@@ -120,34 +120,46 @@ func (e *SQLEngine) getRows(ctx context.Context, args []interface{}) ([][]string
 		return nil, fmt.Errorf("not enough arguments")
 	}
 
-	iFields := args[:len(args)-1]
+	// fields is first argument
+	fields := args[0].([]string)
 
-	fields := make([]string, len(iFields))
-	for i, iField := range iFields {
-		field, ok := iField.(string)
-		if !ok {
-			// the * symbol is also allowed
-			symbolField, ok := iField.(symbol)
-			if symbolField != symbolAsterisk || !ok {
-				return nil, fmt.Errorf("field name must be string")
-			}
-
-			field = string(symbolField)
-		}
-
-		fields[i] = field
-	}
-
-	// name is last argument
-	iName := args[len(args)-1]
-	name, ok := iName.(string)
-	if !ok {
-		return nil, fmt.Errorf("name of table must be string")
-	}
+	// name is second argument
+	name := args[1].(string)
 
 	t, err := e.getTable(ctx, name)
 	if err != nil {
 		return nil, err
+	}
+
+	// there is a WHERE clause
+	var filter *backend.Filter
+	if len(args) > 2 {
+		if len(args) < 5 {
+			return nil, fmt.Errorf("not enough arguments for WHERE clause")
+		}
+
+		// field name is third argument
+		fieldName := args[2].(string)
+
+		// operator name is fourth argument
+		operator := args[3].(backend.Operator)
+
+		// value name is fifth argument
+		field, err := t.FieldWithName(fieldName)
+		if err != nil {
+			return nil, err
+		}
+
+		value, err := field.NewValue(args[4])
+		if err != nil {
+			return nil, err
+		}
+
+		filter = &backend.Filter{
+			FieldName: fieldName,
+			Operator:  operator,
+			Value:     *value,
+		}
 	}
 
 	var fieldsToSelect []string
@@ -158,12 +170,7 @@ func (e *SQLEngine) getRows(ctx context.Context, args []interface{}) ([][]string
 		fieldsToSelect = fields
 	}
 
-	rows, err := t.GetRows(ctx, fieldsToSelect, &backend.Filter{
-		FieldName: "name",
-		Operator:  backend.OperatorNotEqual,
-		Type:      backend.PrimitiveString,
-		Val:       "penny",
-	})
+	rows, err := t.GetRows(ctx, fieldsToSelect, filter)
 	if err != nil {
 		return nil, err
 	}

@@ -62,10 +62,9 @@ func (o Operator) IsValid() bool {
 }
 
 type Filter struct {
+	Value
 	FieldName string
 	Operator  Operator
-	Type      Primitive
-	Val       interface{}
 }
 
 // GetRows returns the selected fields from a table in a two-dimensional string slice which represents the rows within

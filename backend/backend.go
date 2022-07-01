@@ -19,11 +19,12 @@ const (
 	PrimitiveString Primitive = "string" // 256 runes max (1024 bytes)
 	PrimitiveInt    Primitive = "int"    // int64 (8 bytes)
 	PrimitiveFloat  Primitive = "float"  // float64 (8 bytes)
+	PrimitiveBool   Primitive = "bool"   // bool (1 byte)
 )
 
 func (p Primitive) IsValid() bool {
 	switch p {
-	case PrimitiveString, PrimitiveInt, PrimitiveFloat:
+	case PrimitiveString, PrimitiveInt, PrimitiveFloat, PrimitiveBool:
 		return true
 	}
 
@@ -36,6 +37,8 @@ func (p Primitive) Size() int64 {
 		return 1024
 	case PrimitiveInt, PrimitiveFloat:
 		return 8
+	case PrimitiveBool:
+		return 1
 	}
 
 	return 0

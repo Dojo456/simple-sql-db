@@ -3,3 +3,5 @@ INSERT INTO table VALUES (daniel)
 
 CREATE TABLE multi (p int, h int)
 insert into multi VALUES (1, 2)
+
+SELECT * FROM people WHERE name="Penny"

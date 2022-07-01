@@ -2,6 +2,7 @@ package engine
 
 import (
 	"fmt"
+	"github.com/Dojo456/simple-sql-db/backend"
 	"regexp"
 	"strings"
 )
@@ -9,16 +10,15 @@ import (
 type keyword string
 
 const (
-	SelectKeyword keyword = "select"
-	FromKeyword   keyword = "from"
-	AsKeyword     keyword = "as"
-	TableKeyword  keyword = "table"
-	CreateKeyword keyword = "create"
-	InsertKeyword keyword = "insert"
-	IntoKeyword   keyword = "into"
-	ValuesKeyword keyword = "values"
-	IntKeyword    keyword = "int"
-	TextKeyword   keyword = "text"
+	KeywordSelect keyword = "select"
+	KeywordFrom   keyword = "from"
+	KeywordAs     keyword = "as"
+	KeywordTable  keyword = "table"
+	KeywordCreate keyword = "create"
+	KeywordInsert keyword = "insert"
+	KeywordInto   keyword = "into"
+	KeywordValues keyword = "values"
+	KeywordWhere  keyword = "where"
 )
 
 func isKeyword(s string) bool {
@@ -36,7 +36,7 @@ func asKeyword(s string) keyword {
 
 func (k keyword) IsValid() bool {
 	switch k {
-	case SelectKeyword, FromKeyword, AsKeyword, TableKeyword, CreateKeyword, InsertKeyword, IntoKeyword, ValuesKeyword, IntKeyword, TextKeyword:
+	case KeywordSelect, KeywordFrom, KeywordAs, KeywordTable, KeywordCreate, KeywordInsert, KeywordInto, KeywordValues, KeywordWhere:
 		return true
 	}
 	return false
@@ -45,22 +45,26 @@ func (k keyword) IsValid() bool {
 type symbol string
 
 const (
-	semicolonSymbol  symbol = ";"
-	asteriskSymbol   symbol = "*"
-	commaSymbol      symbol = ","
-	leftParenSymbol  symbol = "("
-	rightParenSymbol symbol = ")"
+	symbolSemicolon   symbol = ";"
+	symbolAsterisk    symbol = "*"
+	symbolComma       symbol = ","
+	symbolLeftParen   symbol = "("
+	symbolRightParen  symbol = ")"
+	symbolEqual       symbol = "="
+	symbolGreaterThan symbol = "<"
+	symbolLessThan    symbol = ">"
+	symbolNot         symbol = "!"
 )
 
-func isSymbol(s string) bool {
-	sym := symbol(s)
+func isSymbol(r rune) bool {
+	sym := symbol(r)
 
 	return sym.IsValid()
 }
 
 func (s symbol) IsValid() bool {
 	switch s {
-	case semicolonSymbol, asteriskSymbol, commaSymbol, leftParenSymbol, rightParenSymbol:
+	case symbolSemicolon, symbolAsterisk, symbolComma, symbolLeftParen, symbolRightParen, symbolEqual, symbolGreaterThan, symbolLessThan, symbolNot:
 		return true
 	}
 	return false
@@ -69,9 +73,11 @@ func (s symbol) IsValid() bool {
 type tokenType int
 
 const (
-	ValueTokenType tokenType = iota
-	ParenthesisGroupTokenType
-	QuoteGroupTokenType
+	TokenTypeValue tokenType = iota
+	TokenTypeParenthesisGroup
+	TokenTypeQuoteGroup
+	TokenTypeKeyword
+	TokenTypeSymbolGroup
 )
 
 type token struct {
@@ -90,12 +96,26 @@ func Parse(statementString string) ([]token, error) {
 	var currentToken strings.Builder
 	var tokens []token
 
+	addCurrentToken := func() {
+		if currentToken.Len() != 0 {
+			toString := currentToken.String()
+
+			tokens = append(tokens, token{
+				s: toString,
+				t: TokenTypeValue,
+			})
+			currentToken = strings.Builder{}
+		}
+	}
+
 	// using iterator loop to allow for easier of movement of cursor (incrementing or decrementing i)
 	for i := 0; i < len(statementString); i++ {
 		r := rune(statementString[i])
 
 		// TODO look into pattern matching switch statements in Go
 		if r == '(' { // special parenthesis group
+			addCurrentToken()
+
 			group, end, err := captureParenthesisGroup(statementString, i)
 			if err != nil {
 				return nil, fmt.Errorf("could not capture parenthesis group at %d: %w", i, err)
@@ -103,11 +123,13 @@ func Parse(statementString string) ([]token, error) {
 
 			tokens = append(tokens, token{
 				s: group,
-				t: ParenthesisGroupTokenType,
+				t: TokenTypeParenthesisGroup,
 			})
 			i = end
 			continue
 		} else if isQuote(r) {
+			addCurrentToken()
+
 			group, end, err := captureQuoteGroup(statementString, i)
 			if err != nil {
 				return nil, fmt.Errorf("could not capture quote group at %d: %w", i, err)
@@ -115,33 +137,34 @@ func Parse(statementString string) ([]token, error) {
 
 			tokens = append(tokens, token{
 				s: group,
-				t: QuoteGroupTokenType,
+				t: TokenTypeQuoteGroup,
 			})
 			i = end
 			continue
-		} else if r == ' ' && currentToken.Len() != 0 { // found end to current token, begin next token
-			toString := currentToken.String()
+		} else if isSymbol(r) { // special case of symbol group, usually for operators in WHERE clause
+			addCurrentToken()
+
+			group, end, err := captureSymbolGroup(statementString, i)
+			if err != nil {
+				return nil, fmt.Errorf("could not capture symbol group at %d: %w", i, err)
+			}
 
 			tokens = append(tokens, token{
-				s: toString,
-				t: ValueTokenType,
+				s: group,
+				t: TokenTypeSymbolGroup,
 			})
-			currentToken = strings.Builder{}
+			i = end
+			continue
+		} else if r == ' ' { // found end to current token, begin next token
+			addCurrentToken()
 		} else { // adding to current token
 			currentToken.WriteRune(r)
 			continue
 		}
 	}
 
-	// in case there is an end token. Easier than a do-while loop since it does not check for same conditions
-	if currentToken.Len() != 0 {
-		toString := currentToken.String()
-
-		tokens = append(tokens, token{
-			s: toString,
-			t: ValueTokenType,
-		})
-	}
+	// in case there is an end token
+	addCurrentToken()
 
 	return tokens, nil
 }
@@ -191,7 +214,7 @@ func captureQuoteGroup(s string, start int) (group string, end int, err error) {
 	i := start + 1
 	closed := false
 
-	for i = start + 1; i < len(s); i++ {
+	for ; i < len(s); i++ {
 		r := rune(s[i])
 
 		if isQuote(r) {
@@ -211,6 +234,28 @@ func captureQuoteGroup(s string, start int) (group string, end int, err error) {
 
 func isQuote(r rune) bool {
 	return r == '\'' || r == '"'
+}
+
+func captureSymbolGroup(s string, start int) (group string, end int, err error) {
+	if !isSymbol(rune(s[start])) {
+		return "", 0, fmt.Errorf("starting rune is not a symbol")
+	}
+	var captured strings.Builder
+
+	i := start
+
+	for ; i < len(s); i++ {
+		r := rune(s[i])
+
+		if !isSymbol(r) {
+			i--
+			break
+		}
+
+		captured.WriteRune(r)
+	}
+
+	return captured.String(), i, nil
 }
 
 // captureUntilKeyword captures everything until the next keyword after the given start index. If the keyword cannot be
@@ -250,26 +295,26 @@ func getCommand(keywords []keyword) (*command, error) {
 
 	first := keywords[0]
 	switch first {
-	case CreateKeyword:
+	case KeywordCreate:
 		{
 			if len(keywords) > 1 {
 				second := keywords[1]
 				switch second {
-				case TableKeyword:
+				case KeywordTable:
 					returner = CreateTableCommand
 					found = true
 				}
 			}
 		}
-	case SelectKeyword:
+	case KeywordSelect:
 		returner = SelectCommand
 		found = true
-	case InsertKeyword:
+	case KeywordInsert:
 		{
 			if len(keywords) > 1 {
 				second := keywords[1]
 				switch second {
-				case IntoKeyword:
+				case KeywordInto:
 					returner = InsertCommand
 					found = true
 				}
@@ -298,7 +343,7 @@ func (c command) captureArguments(tokens []token, start int) (args []evaluable, 
 	case InsertCommand:
 		args, argsCaptured, err = captureInsertArgs(truncated)
 	case SelectCommand:
-		args, argsCaptured, err = captureSelectCommand(truncated)
+		args, argsCaptured, err = captureSelectArgs(truncated)
 	}
 
 	if err != nil {
@@ -314,12 +359,12 @@ func captureCreateTableArgs(truncated []token) ([]evaluable, int, error) {
 	}
 
 	name := truncated[0]
-	if name.t != ValueTokenType {
+	if name.t != TokenTypeValue {
 		return nil, 0, fmt.Errorf("invalid table name")
 	}
 
 	fields := truncated[1]
-	if fields.t != ParenthesisGroupTokenType {
+	if fields.t != TokenTypeParenthesisGroup {
 		return nil, 0, fmt.Errorf("invalid fields declaration")
 	}
 
@@ -337,25 +382,25 @@ func captureInsertArgs(truncated []token) ([]evaluable, int, error) {
 	args := make([]evaluable, 0, 3)
 
 	name := truncated[0]
-	if name.t != ValueTokenType {
+	if name.t != TokenTypeValue {
 		return nil, 0, fmt.Errorf("invalid table name")
 	}
 	args = append(args, asValue(name.s))
 
 	//fieldsOrValue := truncated[1]
 	//
-	//if fieldsOrValue.t == ParenthesisGroupTokenType { // values are explicitly assigned to fields
+	//if fieldsOrValue.t == TokenTypeParenthesisGroup { // values are explicitly assigned to fields
 	//
 	//}
 
 	valKeyword := truncated[1]
-	if valKeyword.t != ValueTokenType || asKeyword(valKeyword.s) != ValuesKeyword {
+	if valKeyword.t != TokenTypeValue || asKeyword(valKeyword.s) != KeywordValues {
 		return nil, 0, fmt.Errorf("invalid syntax")
 	}
 	args = append(args, asValue(valKeyword.s))
 
 	values := truncated[2]
-	if values.t != ParenthesisGroupTokenType {
+	if values.t != TokenTypeParenthesisGroup {
 		return nil, 0, fmt.Errorf("invalid values syntax")
 	}
 	args = append(args, asValue(values.s))
@@ -363,28 +408,85 @@ func captureInsertArgs(truncated []token) ([]evaluable, int, error) {
 	return args, 3, nil
 }
 
-func captureSelectCommand(truncated []token) ([]evaluable, int, error) {
-	var fields []evaluable
+func captureSelectArgs(truncated []token) ([]evaluable, int, error) {
+	var args []evaluable
 
 	i := 0
 
 	for l := len(truncated); i < l; i++ {
 		c := truncated[i]
-		if strings.ToLower(c.s) == string(FromKeyword) {
+		if strings.ToLower(c.s) == string(KeywordFrom) {
+			// search for WHERE clause
 			break
 		}
 
 		split := strings.Split(c.s, ",")
 
 		for _, t := range split {
-			fields = append(fields, value{
+			args = append(args, value{
 				val: t,
 			})
 		}
 	}
 
-	name := truncated[i+1].s
-	fields = append(fields, value{val: name})
+	i++
+	name := truncated[i].s
+	args = append(args, value{val: name})
 
-	return fields, len(fields) + 1, nil
+	i++
+	// search for WHERE clause
+	if i != len(truncated) && keyword(strings.ToLower(truncated[i].s)) == KeywordWhere {
+		var wT []token
+
+		if len(truncated) == i+4 { // in format WHERE field = value
+			wT = truncated[i:]
+		} else { // in format WHERE field=value
+			stringTokens := strings.Split(truncated[i+1].s, "=")
+
+			wT := make([]token, 3)
+			for j := 0; j < 2; j++ {
+				wT[i] = token{
+					s: stringTokens[i],
+					t: TokenTypeValue,
+				}
+			}
+
+			valueTokenString := stringTokens[2]
+			valueTokenType := TokenTypeValue
+
+			if isQuote(rune(valueTokenString[0])) && isQuote(rune(valueTokenString[len(valueTokenString)-1])) {
+				valueTokenType = TokenTypeQuoteGroup
+			}
+
+			wT[2] = token{
+				s: valueTokenString,
+				t: valueTokenType,
+			}
+		}
+
+		// parse field name
+		fieldNameToken := wT[0]
+		if fieldNameToken.t != TokenTypeValue {
+			return nil, 0, fmt.Errorf("could not parse WHERE clause")
+		}
+		args = append(args, value{val: fieldNameToken.s})
+
+		// parse operator
+		operatorToken := wT[1]
+		if fieldNameToken.t != TokenTypeValue {
+			return nil, 0, fmt.Errorf("could not parse WHERE clause")
+		}
+		operator := backend.Operator(operatorToken.s)
+		if !operator.IsValid() {
+			return nil, 0, fmt.Errorf("%s is not a valid operator", operatorToken.s)
+		}
+		args = append(args, value{val: operator})
+
+		// parse valueString to compare to
+		valueToken := wT[2]
+		args = append(args, value{val: valueToken.s})
+	}
+
+	// add 1 as the FROM keyword is not an argument but is still captured
+	return args, len(args) + 1, nil
 }

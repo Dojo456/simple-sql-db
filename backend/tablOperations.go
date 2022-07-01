@@ -52,6 +52,15 @@ const (
 	OperatorGreaterThanOrEqual Operator = ">"
 )
 
+func (o Operator) IsValid() bool {
+	switch o {
+	case OperatorEqual, OperatorNotEqual, OperatorLessThan, OperatorLessThanOrEqual, OperatorGreaterThan, OperatorGreaterThanOrEqual:
+		return true
+	}
+
+	return false
+}
+
 type Filter struct {
 	FieldName string
 	Operator  Operator

@@ -6,6 +6,10 @@ import (
 	"strings"
 )
 
+func parseQuotedString(s string) string {
+	return s[1 : len(s)-2]
+}
+
 func isEmptyString(s string) bool {
 	val, _ := regexp.Match(`\S`, []byte(s))
 

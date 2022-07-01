@@ -126,7 +126,13 @@ func (e *SQLEngine) getRows(ctx context.Context, args []interface{}) ([][]string
 	for i, iField := range iFields {
 		field, ok := iField.(string)
 		if !ok {
-			return nil, fmt.Errorf("field name must be string")
+			// the * symbol is also allowed
+			symbolField, ok := iField.(symbol)
+			if symbolField != symbolAsterisk || !ok {
+				return nil, fmt.Errorf("field name must be string")
+			}
+
+			field = string(symbolField)
 		}
 
 		fields[i] = field

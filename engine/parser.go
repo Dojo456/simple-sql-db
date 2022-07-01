@@ -412,11 +412,12 @@ func captureSelectArgs(truncated []token) ([]evaluable, int, error) {
 	var args []evaluable
 
 	i := 0
+	keywordsCaptured := 0
 
 	for l := len(truncated); i < l; i++ {
 		c := truncated[i]
 		if strings.ToLower(c.s) == string(KeywordFrom) {
-			// search for WHERE clause
+			keywordsCaptured++
 			break
 		}
 
@@ -436,10 +437,11 @@ func captureSelectArgs(truncated []token) ([]evaluable, int, error) {
 	i++
 	// search for WHERE clause
 	if i != len(truncated) && keyword(strings.ToLower(truncated[i].s)) == KeywordWhere {
+		keywordsCaptured++
 		var wT []token
 
 		if len(truncated) == i+4 { // in format WHERE field = value
-			wT = truncated[i:]
+			wT = truncated[i+1:]
 		} else { // in format WHERE field=value
 			stringTokens := strings.Split(truncated[i+1].s, "=")
 
@@ -487,6 +489,6 @@ func captureSelectArgs(truncated []token) ([]evaluable, int, error) {
 		args = append(args, value{val: valueToken.s})
 	}
 
-	// add 1 as the FROM keyword is not an argument but is still captured
-	return args, len(args) + 1, nil
+	// keywords captured are not part of the args but do count as tokens
+	return args, len(args) + keywordsCaptured, nil
 }

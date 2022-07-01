@@ -40,13 +40,33 @@ func (t *Table) InsertRow(ctx context.Context, vals []Value) (int, error) {
 	return 1, nil
 }
 
-// GetAllRows returns the selected fields from a table in a two-dimensional string slice which represents all rows
-// within a table.
-func (t *Table) GetAllRows(ctx context.Context, fields []string) ([][]Value, error) {
+// Operator are the supported comparison operators in a WHERE clause of SELECT statement
+type Operator string
+
+const (
+	OperatorEqual              Operator = "="
+	OperatorNotEqual           Operator = "!="
+	OperatorLessThan           Operator = "<"
+	OperatorLessThanOrEqual    Operator = "<="
+	OperatorGreaterThan        Operator = ">="
+	OperatorGreaterThanOrEqual Operator = ">"
+)
+
+type Filter struct {
+	FieldName string
+	Operator  Operator
+	Type      Primitive
+	Val       interface{}
+}
+
+// GetRows returns the selected fields from a table in a two-dimensional string slice which represents the rows within
+// a table that satisfies the filter. If fields is a zero length slice, all fields will be returned. If the filter is
+// nil, all rows will be returned.
+func (t *Table) GetRows(ctx context.Context, fields []string, filter *Filter) ([][]Value, error) {
 	shouldSelectField := make([]bool, len(t.Fields))
 	fieldsToSelectCount := 0
 
-	// there is a filter for fields
+	// if there is a filter for fields, validate field inputs
 	if len(fields) != 0 {
 		tFieldNames := make([]string, len(t.Fields))
 		for i, field := range t.Fields {
@@ -75,6 +95,19 @@ func (t *Table) GetAllRows(ctx context.Context, fields []string) ([][]Value, err
 		fieldsToSelectCount = len(t.Fields)
 	}
 
+	// if there is a filter, validate filter
+	if filter != nil {
+		field, err := t.FieldWithName(filter.FieldName)
+		if err != nil {
+			return nil, err
+		}
+
+		if field.Type != filter.Type {
+			return nil, fmt.Errorf("%s.%s is of type %s", t.Name, field.Name, field.Type)
+		}
+	}
+
+	// calculate byte offsets to begin file reading
 	dataByteCount := t.fileByteCount - t.headerByteCount
 
 	dataBytes := make([]byte, dataByteCount)
@@ -96,35 +129,62 @@ func (t *Table) GetAllRows(ctx context.Context, fields []string) ([][]Value, err
 		return nil, fmt.Errorf("corrupted cache")
 	}
 
-	returner := make([][]Value, t.rowCount)
+	returner := make([][]Value, 0, t.rowCount)
 
 	var cursor int64 = 0
 	var i int64 = 0
 	for ; i < t.rowCount; i++ {
 		row := make([]Value, 0, fieldsToSelectCount)
+		shouldAddRow := true
 
 		for j, field := range t.Fields {
-			if shouldSelectField[j] {
-				cellBytes := dataBytes[cursor : cursor+field.Type.Size()]
-				var cell interface{}
-				switch field.Type {
-				case StringPrimitive:
-					cell = bToS(cellBytes)
-				case FloatPrimitive:
-					cell = bToF64(cellBytes)
-				case IntPrimitive:
-					cell = bToI64(cellBytes)
+			if shouldAddRow {
+				isFilterField := false
+				if filter != nil {
+					isFilterField = field.Name == filter.FieldName
 				}
-				row = append(row, Value{
-					Type: field.Type,
-					Val:  cell,
-				})
+
+				shouldSelectThisField := shouldSelectField[j]
+
+				if shouldSelectThisField || isFilterField {
+					// read cell
+					cellBytes := dataBytes[cursor : cursor+field.Type.Size()]
+					var cell interface{}
+					switch field.Type {
+					case PrimitiveString:
+						cell = bToS(cellBytes)
+					case PrimitiveFloat:
+						cell = bToF64(cellBytes)
+					case PrimitiveInt:
+						cell = bToI64(cellBytes)
+					}
+
+					if isFilterField {
+						switch c := cell.(type) {
+						case string:
+							shouldAddRow = compareValues(c, filter.Operator, filter.Val.(string))
+						case int64:
+							shouldAddRow = compareValues(c, filter.Operator, filter.Val.(int64))
+						case float64:
+							shouldAddRow = compareValues(c, filter.Operator, filter.Val.(float64))
+						}
+					}
+
+					if shouldSelectThisField {
+						row = append(row, Value{
+							Type: field.Type,
+							Val:  cell,
+						})
+					}
+				}
 			}
 
 			cursor += field.Type.Size()
 		}
 
-		returner[i] = row
+		if shouldAddRow {
+			returner = append(returner, row)
+		}
 	}
 
 	return returner, nil

@@ -370,7 +370,7 @@ func captureSelectCommand(truncated []token) ([]evaluable, int, error) {
 
 	for l := len(truncated); i < l; i++ {
 		c := truncated[i]
-		if c.s == string(FromKeyword) {
+		if strings.ToLower(c.s) == string(FromKeyword) {
 			break
 		}
 

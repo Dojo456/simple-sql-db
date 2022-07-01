@@ -16,14 +16,14 @@ import (
 type Primitive string
 
 const (
-	StringPrimitive Primitive = "string" // 256 runes max (1024 bytes)
-	IntPrimitive    Primitive = "int"    // int64 (8 bytes)
-	FloatPrimitive  Primitive = "float"  // float64 (8 bytes)
+	PrimitiveString Primitive = "string" // 256 runes max (1024 bytes)
+	PrimitiveInt    Primitive = "int"    // int64 (8 bytes)
+	PrimitiveFloat  Primitive = "float"  // float64 (8 bytes)
 )
 
 func (p Primitive) IsValid() bool {
 	switch p {
-	case StringPrimitive, IntPrimitive, FloatPrimitive:
+	case PrimitiveString, PrimitiveInt, PrimitiveFloat:
 		return true
 	}
 
@@ -32,9 +32,9 @@ func (p Primitive) IsValid() bool {
 
 func (p Primitive) Size() int64 {
 	switch p {
-	case StringPrimitive:
+	case PrimitiveString:
 		return 1024
-	case IntPrimitive, FloatPrimitive:
+	case PrimitiveInt, PrimitiveFloat:
 		return 8
 	}
 
@@ -51,7 +51,7 @@ type Value struct {
 	FieldName string
 }
 
-// stringValue returns a new Value struct with Type StringPrimitive. If the provided string is longer than the max string
+// stringValue returns a new Value struct with Type PrimitiveString. If the provided string is longer than the max string
 // length (256 runes), the string will be truncated.
 func stringValue(s string) (Value, error) {
 	if len(s) > 256 {
@@ -59,7 +59,7 @@ func stringValue(s string) (Value, error) {
 	}
 
 	return Value{
-		Type: StringPrimitive,
+		Type: PrimitiveString,
 		Val:  s,
 	}, nil
 }
@@ -71,7 +71,7 @@ func intValue(s string) (Value, error) {
 	}
 
 	return Value{
-		Type: IntPrimitive,
+		Type: PrimitiveInt,
 		Val:  int64(i),
 	}, nil
 }
@@ -83,7 +83,7 @@ func floatValue(s string) (Value, error) {
 	}
 
 	return Value{
-		Type: FloatPrimitive,
+		Type: PrimitiveFloat,
 		Val:  f,
 	}, nil
 }
@@ -112,20 +112,20 @@ type Field struct {
 // it will attempt to parse the value into the correct type.
 func (field Field) NewValue(val interface{}) (*Value, error) {
 	switch field.Type {
-	case StringPrimitive:
+	case PrimitiveString:
 		{
 			s, ok := val.(string)
 			if !ok {
 				return nil, fmt.Errorf("must be string")
 			}
 			return &Value{
-				Type:      StringPrimitive,
+				Type:      PrimitiveString,
 				Val:       s,
 				FieldName: field.Name,
 			}, nil
 		}
 
-	case IntPrimitive:
+	case PrimitiveInt:
 		{
 			i, ok := val.(int64)
 			if !ok {
@@ -142,12 +142,12 @@ func (field Field) NewValue(val interface{}) (*Value, error) {
 				i = int64(sI)
 			}
 			return &Value{
-				Type:      IntPrimitive,
+				Type:      PrimitiveInt,
 				Val:       i,
 				FieldName: field.Name,
 			}, nil
 		}
-	case FloatPrimitive:
+	case PrimitiveFloat:
 		{
 			f, ok := val.(float64)
 			if !ok {
@@ -164,7 +164,7 @@ func (field Field) NewValue(val interface{}) (*Value, error) {
 				f = sF
 			}
 			return &Value{
-				Type:      FloatPrimitive,
+				Type:      PrimitiveFloat,
 				Val:       f,
 				FieldName: field.Name,
 			}, nil
@@ -187,6 +187,36 @@ type Table struct {
 
 func (t *Table) Cleanup() error {
 	return t.file.Close()
+}
+
+func (t *Table) FieldWithName(fieldName string) (Field, error) {
+	for _, field := range t.Fields {
+		if field.Name == fieldName {
+			return field, nil
+		}
+	}
+
+	return Field{}, fmt.Errorf("%s.%s does not exist", t.Name, fieldName)
+}
+
+func (t *Table) HasField(fieldName string) bool {
+	for _, field := range t.Fields {
+		if field.Name == fieldName {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (t *Table) HasFieldWithType(fieldName string, fieldType Primitive) bool {
+	for _, field := range t.Fields {
+		if field.Name == fieldName && field.Type == fieldType {
+			return true
+		}
+	}
+
+	return false
 }
 
 func getTableFilePath(name string) string {

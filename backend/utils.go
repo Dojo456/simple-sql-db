@@ -9,7 +9,16 @@ import (
 	"strings"
 )
 
-var fileAlreadyExistsError error = errors.New("file already exists")
+func compareValues[T comparable](v1 T, operator Operator, v2 T) bool {
+	switch operator {
+	case OperatorEqual:
+		return v1 == v2
+	case OperatorNotEqual:
+		return v1 != v2
+	}
+
+	return false
+}
 
 // exclusive returns the elements that are in s1 but not in s2
 func exclusive[T comparable](s1 []T, s2 []T) []T {
@@ -33,6 +42,8 @@ func contains[T comparable](slice []T, element T) bool {
 
 	return false
 }
+
+var fileAlreadyExistsError error = errors.New("file already exists")
 
 // createFile creates a file at the given path. It will throw an error if the file already exists
 func createFile(path string) (*os.File, error) {

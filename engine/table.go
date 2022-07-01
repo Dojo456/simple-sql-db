@@ -144,18 +144,22 @@ func (e *SQLEngine) getRows(ctx context.Context, args []interface{}) ([][]string
 		return nil, err
 	}
 
-	var rows [][]backend.Value
+	var fieldsToSelect []string
 
 	if fields[0] == "*" {
-		rows, err = t.GetAllRows(ctx, nil)
-		if err != nil {
-			return nil, err
-		}
+		fieldsToSelect = nil
 	} else {
-		rows, err = t.GetAllRows(ctx, fields)
-		if err != nil {
-			return nil, err
-		}
+		fieldsToSelect = fields
+	}
+
+	rows, err := t.GetRows(ctx, fieldsToSelect, &backend.Filter{
+		FieldName: "name",
+		Operator:  backend.OperatorNotEqual,
+		Type:      backend.PrimitiveString,
+		Val:       "penny",
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	returner := make([][]string, len(rows))

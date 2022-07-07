@@ -43,11 +43,11 @@ func main() {
 			continue
 		}
 
-		fmt.Printf("\n%v", cmd)
+		fmt.Printf("\n%v\n", cmd)
 	}
 }
 
-func cleanup(e engine.Cleanable) {
+func cleanup(e *engine.SQLEngine) {
 	fmt.Println("\ngracefully shutting down")
 
 	err := e.Cleanup()

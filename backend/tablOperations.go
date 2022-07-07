@@ -48,8 +48,8 @@ const (
 	OperatorNotEqual           Operator = "!="
 	OperatorLessThan           Operator = "<"
 	OperatorLessThanOrEqual    Operator = "<="
-	OperatorGreaterThan        Operator = ">="
-	OperatorGreaterThanOrEqual Operator = ">"
+	OperatorGreaterThan        Operator = ">"
+	OperatorGreaterThanOrEqual Operator = ">="
 )
 
 func (o Operator) IsValid() bool {

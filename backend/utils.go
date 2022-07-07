@@ -9,12 +9,20 @@ import (
 	"strings"
 )
 
-func compareValues[T comparable](v1 T, operator Operator, v2 T) bool {
+func compareValues[T string | float64 | int64](v1 T, operator Operator, v2 T) bool {
 	switch operator {
 	case OperatorEqual:
 		return v1 == v2
 	case OperatorNotEqual:
 		return v1 != v2
+	case OperatorLessThan:
+		return v1 < v2
+	case OperatorLessThanOrEqual:
+		return v1 <= v2
+	case OperatorGreaterThan:
+		return v1 > v2
+	case OperatorGreaterThanOrEqual:
+		return v1 >= v2
 	}
 
 	return false

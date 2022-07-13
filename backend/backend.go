@@ -4,8 +4,6 @@ package backend
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -177,7 +175,7 @@ func (field Field) NewValue(val interface{}) (*Value, error) {
 	return nil, nil
 }
 
-type Table struct {
+type table struct {
 	mrw             *sync.RWMutex
 	file            *os.File
 	fileByteCount   int64
@@ -188,11 +186,30 @@ type Table struct {
 	Fields          []Field
 }
 
-func (t *Table) Cleanup() error {
+type OperableTable interface {
+	Cleanup() error
+	GetName() string
+	GetFields() []Field
+	FieldWithName(fieldName string) (Field, error)
+	HasField(fieldName string) bool
+	HasFieldWithType(fieldName string, fieldType Primitive) bool
+	InsertRow(ctx context.Context, vals []Value) (int, error)
+	GetRows(ctx context.Context, fields []string, filter *Filter) ([]Row, error)
+}
+
+func (t *table) GetName() string {
+	return t.Name
+}
+
+func (t *table) GetFields() []Field {
+	return t.Fields
+}
+
+func (t *table) Cleanup() error {
 	return t.file.Close()
 }
 
-func (t *Table) FieldWithName(fieldName string) (Field, error) {
+func (t *table) FieldWithName(fieldName string) (Field, error) {
 	for _, field := range t.Fields {
 		if field.Name == fieldName {
 			return field, nil
@@ -202,7 +219,7 @@ func (t *Table) FieldWithName(fieldName string) (Field, error) {
 	return Field{}, fmt.Errorf("%s.%s does not exist", t.Name, fieldName)
 }
 
-func (t *Table) HasField(fieldName string) bool {
+func (t *table) HasField(fieldName string) bool {
 	for _, field := range t.Fields {
 		if field.Name == fieldName {
 			return true
@@ -212,7 +229,7 @@ func (t *Table) HasField(fieldName string) bool {
 	return false
 }
 
-func (t *Table) HasFieldWithType(fieldName string, fieldType Primitive) bool {
+func (t *table) HasFieldWithType(fieldName string, fieldType Primitive) bool {
 	for _, field := range t.Fields {
 		if field.Name == fieldName && field.Type == fieldType {
 			return true
@@ -220,149 +237,4 @@ func (t *Table) HasFieldWithType(fieldName string, fieldType Primitive) bool {
 	}
 
 	return false
-}
-
-func getTableFilePath(name string) string {
-	return fmt.Sprintf("./database/%s-db", name)
-}
-
-// CreateTable creates a table and returns the table corresponding table struct.
-func CreateTable(ctx context.Context, name string, fields []Field) (*Table, error) {
-	path := getTableFilePath(name)
-
-	file, err := createFile(path)
-	if err != nil {
-		if errors.Is(err, fileAlreadyExistsError) {
-			return nil, fmt.Errorf(`table with name "%s" already exists`, name)
-		} else {
-			return nil, fmt.Errorf("could not create table db file: %w", err)
-		}
-	}
-
-	var lock sync.RWMutex
-
-	table := Table{
-		mrw:          &lock,
-		rowCount:     0,
-		file:         file,
-		Name:         name,
-		Fields:       fields,
-		rowByteCount: calculateRowSize(fields),
-	}
-
-	fmt.Println("creating table: ")
-	fmt.Println(table)
-
-	// write the table struct to the file to act as a table and schema
-	err = table.writeTableHeader()
-	if err != nil {
-		return nil, fmt.Errorf("could not write table header: %w", err)
-	}
-
-	return &table, nil
-}
-
-// writeTableHeader writes the header to initialize a table file. It will flush a table if there is already data.
-func (t *Table) writeTableHeader() error {
-	t.mrw.Lock()
-	defer t.mrw.Unlock()
-
-	data, err := json.Marshal(*t)
-	if err != nil {
-		return fmt.Errorf("could not encode table metadata: %w", err)
-	}
-
-	headerByteCount := len(data) + 8
-
-	// begin header with an unsigned i64 that is the number of bytes of the table size, including the number itself
-	header := i64ToB(int64(headerByteCount))
-	header = append(header, data...)
-
-	_, err = t.file.Write(header)
-	if err != nil {
-		return err
-	}
-
-	t.headerByteCount = int64(headerByteCount)
-	t.fileByteCount = int64(headerByteCount)
-
-	return nil
-}
-
-// calculateRowSize calculates the numbers of bytes each row of the table takes. This should be called on table
-// initialization and stored into the Table struct.
-func calculateRowSize(fields []Field) int64 {
-	var sum int64
-
-	for _, field := range fields {
-		sum += field.Type.Size()
-	}
-
-	return sum
-}
-
-// readTableFile reads a tableFile's header to create a Table struct that can then be used for operations.
-func readTableFile(file *os.File) (*Table, error) {
-	headerSizeBytes := make([]byte, 8)
-
-	_, err := file.Read(headerSizeBytes)
-	if err != nil {
-		return nil, err
-	}
-
-	headerSize := bToI64(headerSizeBytes)
-	header := make([]byte, headerSize-8)
-
-	_, err = file.Read(header)
-	if err != nil {
-		return nil, err
-	}
-
-	var table Table
-	err = json.Unmarshal(header, &table)
-	if err != nil {
-		return nil, err
-	}
-
-	table.headerByteCount = headerSize
-	table.file = file
-	table.rowByteCount = calculateRowSize(table.Fields)
-
-	stat, err := file.Stat()
-	if err != nil {
-		return nil, fmt.Errorf("could not open file stats: %w", err)
-	}
-
-	table.fileByteCount = stat.Size()
-	table.rowCount = (table.fileByteCount - table.headerByteCount) / table.rowByteCount
-
-	return &table, nil
-}
-
-// OpenTable returns a Table struct that tableReader and tableWriters can attach to. If table with given name does not
-// exist, an error will be returned. An opened Table needs to be cleaned up later through the Cleanable interface
-func OpenTable(name string) (*Table, error) {
-	path := getTableFilePath(name)
-
-	f, err := os.OpenFile(path, os.O_RDWR, 0644)
-	if err != nil {
-		if os.IsNotExist(err) {
-			f.Close()
-			return nil, fmt.Errorf("table with name %s does not exist", name)
-		} else {
-			f.Close()
-			return nil, fmt.Errorf("could not open table file: %w", err)
-		}
-	}
-
-	table, err := readTableFile(f)
-	if err != nil {
-		f.Close()
-		return nil, fmt.Errorf("could not read table file: %w", err)
-	}
-
-	var lock sync.RWMutex
-	table.mrw = &lock
-
-	return table, nil
 }

@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-func (e *SQLEngine) createTable(ctx context.Context, args []interface{}) (*backend.Table, error) {
+func (e *SQLEngine) createTable(ctx context.Context, args []interface{}) (backend.OperableTable, error) {
 	// two args are needed, first the name then the fields as a parenthesis group
 	if len(args) != 2 {
 		return nil, fmt.Errorf("expected 2 arguments, received %d", len(args))
@@ -93,7 +93,7 @@ func (e *SQLEngine) insertRow(ctx context.Context, args []interface{}) (int, err
 		return 0, fmt.Errorf("could not open table file: %w", err)
 	}
 
-	tFields := table.Fields
+	tFields := table.GetFields()
 
 	values := make([]backend.Value, len(sValues))
 	for i, sVal := range sValues {
@@ -101,7 +101,7 @@ func (e *SQLEngine) insertRow(ctx context.Context, args []interface{}) (int, err
 
 		val, err := field.NewValue(sVal)
 		if err != nil {
-			return 0, fmt.Errorf("error with %s.%s: %w", table.Name, field.Name, err)
+			return 0, fmt.Errorf("error with %s.%s: %w", table.GetName(), field.Name, err)
 		}
 
 		values[i] = *val
@@ -177,12 +177,12 @@ func (e *SQLEngine) getRows(ctx context.Context, args []interface{}) ([][]string
 
 	returner := make([][]string, len(rows))
 
-	for i := 0; i < len(rows); i++ {
-		valRow := rows[i]
+	for i, valRow := range rows {
+		values := valRow.Values
 
-		row := make([]string, len(valRow))
+		row := make([]string, len(values))
 
-		for j, cell := range rows[i] {
+		for j, cell := range values {
 			var cellString string
 
 			switch v := cell.Val.(type) {
@@ -203,7 +203,7 @@ func (e *SQLEngine) getRows(ctx context.Context, args []interface{}) ([][]string
 	return returner, nil
 }
 
-func (e *SQLEngine) getTable(ctx context.Context, name string) (*backend.Table, error) {
+func (e *SQLEngine) getTable(ctx context.Context, name string) (backend.OperableTable, error) {
 	var err error
 
 	table, open := e.openTables[name]

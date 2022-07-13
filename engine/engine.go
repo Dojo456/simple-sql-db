@@ -10,7 +10,7 @@ import (
 )
 
 type SQLEngine struct {
-	openTables map[string]*backend.Table
+	openTables map[string]backend.OperableTable
 }
 
 type Cleanable interface {
@@ -20,7 +20,7 @@ type Cleanable interface {
 // New returns a new engine instance that can then be used to execute SQL statements.
 func New(ctx context.Context) (*SQLEngine, error) {
 	return &SQLEngine{
-		map[string]*backend.Table{},
+		map[string]backend.OperableTable{},
 	}, nil
 }
 

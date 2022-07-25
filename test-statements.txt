@@ -15,5 +15,8 @@ INSERT INTO people VALUES (carson, 18)
 INSERT INTO people VALUES (dakota, 18)
 INSERT INTO people VALUES (rayyan, 18)
 
+INSERT INTO people (age, name) VALUES (18, andy)
+INSERT INTO people (name) VALUES (lucas)
+
 DELETE FROM people
 DELETE FROM people WHERE name="penny"

@@ -62,7 +62,7 @@ func (e *SQLEngine) Execute(ctx context.Context, statement string) (interface{},
 					mapped = append(mapped, string(k))
 				}
 
-				joined := strings.Join(mapped, " ")
+				joined := strings.ToUpper(strings.Join(mapped, " "))
 
 				return nil, fmt.Errorf("invalid arguements for %s statement: %w", joined, err)
 			}

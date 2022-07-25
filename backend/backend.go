@@ -203,7 +203,11 @@ func (t *table) GetName() string {
 }
 
 func (t *table) GetFields() []Field {
-	return t.Fields
+	returner := make([]Field, len(t.Fields))
+
+	copy(returner, t.Fields)
+
+	return returner
 }
 
 func (t *table) Cleanup() error {

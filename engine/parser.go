@@ -395,31 +395,36 @@ func captureInsertArgs(truncated []token) ([]evaluable, int, error) {
 
 	args := make([]evaluable, 0, 3)
 
-	name := truncated[0]
+	i := 0
+	name := truncated[i]
 	if name.t != TokenTypeValue {
-		return nil, 0, fmt.Errorf("invalid table name")
+		return nil, 0, fmt.Errorf("invalid syntax")
 	}
 	args = append(args, asValue(name.s))
+	i++
 
-	//fieldsOrValue := truncated[1]
-	//
-	//if fieldsOrValue.t == TokenTypeParenthesisGroup { // values are explicitly assigned to fields
-	//
-	//}
+	fieldsOrValue := truncated[i]
+	toAppend := ""
+	if fieldsOrValue.t == TokenTypeParenthesisGroup { // values are explicitly assigned to fields
+		toAppend = fieldsOrValue.s
+		i++
+	}
+	args = append(args, asValue(toAppend))
 
-	valKeyword := truncated[1]
+	valKeyword := truncated[i]
 	if valKeyword.t != TokenTypeValue || asKeyword(valKeyword.s) != KeywordValues {
 		return nil, 0, fmt.Errorf("invalid syntax")
 	}
-	args = append(args, asValue(valKeyword.s))
+	i++
 
-	values := truncated[2]
+	values := truncated[i]
 	if values.t != TokenTypeParenthesisGroup {
 		return nil, 0, fmt.Errorf("invalid values syntax")
 	}
 	args = append(args, asValue(values.s))
+	i++
 
-	return args, 3, nil
+	return args, i, nil
 }
 
 func captureSelectArgs(truncated []token) ([]evaluable, int, error) {

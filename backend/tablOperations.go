@@ -16,11 +16,25 @@ func (t *table) InsertRow(ctx context.Context, vals []Value) (int, error) {
 		return 0, fmt.Errorf("there are only %d fields on this table", len(t.Fields))
 	}
 
-	// a buffer is not needed as the total size is known
+	valsMap := make(map[string]Value, len(vals))
+	for _, val := range vals {
+		valsMap[val.FieldName] = val
+	}
+
+	// a buffer is not needed as the total size is fixed
 	b := make([]byte, 0, t.rowByteCount)
 
-	for _, val := range vals {
-		b = append(b, val.Bytes()...)
+	for _, field := range fields {
+		var bytes []byte
+
+		val, exists := valsMap[field.Name]
+		if exists {
+			bytes = val.Bytes()
+		} else {
+			bytes = make([]byte, field.Type.Size())
+		}
+
+		b = append(b, bytes...)
 	}
 
 	// reslice b to be full length since each row must be of the same size

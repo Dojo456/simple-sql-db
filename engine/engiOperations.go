@@ -79,13 +79,29 @@ func parseField(s string) (backend.Field, error) {
 	}, nil
 }
 
+// (name string, fieldNames CommaSeparateStringSlice, values CommaSeparatedStringSlice)
 func (e *SQLEngine) insertRow(ctx context.Context, args []interface{}) (int, error) {
 	name, ok := args[0].(string)
 	if !ok {
 		return 0, fmt.Errorf("name of table must be string")
 	}
 
-	// values is a string of values separated by commas
+	// fieldNames is a string slice of values separated by commas
+	var sFields []string
+	if len(args[1].(string)) != 0 {
+		sFields = strings.Split(args[1].(string), ",")
+	}
+
+	visited := make(map[string]bool, len(sFields))
+	for _, sField := range sFields {
+		if visited[sField] {
+			return 0, fmt.Errorf("cannot insert into same field twice: %s", sField)
+		}
+
+		visited[sField] = true
+	}
+
+	// values is a string slice of values separated by commas
 	sValues := strings.Split(args[2].(string), ",")
 
 	table, err := e.getTable(ctx, name)
@@ -93,11 +109,41 @@ func (e *SQLEngine) insertRow(ctx context.Context, args []interface{}) (int, err
 		return 0, fmt.Errorf("could not open table file: %w", err)
 	}
 
+	// fields to insert into in order
+	var iFields []backend.Field
+
 	tFields := table.GetFields()
+	if len(sFields) == 0 { // fieldNames omitted, all fields are being inserted into in, in order
+		if len(sValues) != len(tFields) {
+			return 0, fmt.Errorf("mismatched number of values to fields: %d values, %d fields", len(sValues), len(tFields))
+		}
+
+		iFields = tFields
+	} else {
+		iFields = make([]backend.Field, len(sValues))
+
+		for i, sField := range sFields {
+			found := false
+
+			for j, tField := range tFields {
+				if tField.Name == sField {
+					found = true
+					tFields[j] = backend.Field{}
+					iFields[i] = tField
+
+					break
+				}
+			}
+
+			if !found {
+				return 0, fmt.Errorf("%s.%s does not exist", table.GetName(), sField)
+			}
+		}
+	}
 
 	values := make([]backend.Value, len(sValues))
 	for i, sVal := range sValues {
-		field := tFields[i]
+		field := iFields[i]
 
 		val, err := field.NewValue(sVal)
 		if err != nil {

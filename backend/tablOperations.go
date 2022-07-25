@@ -256,6 +256,10 @@ func (t *table) DeleteRows(ctx context.Context, filter *Filter) (int, error) {
 		return 0, err
 	}
 
+	if len(rows) == 0 {
+		return 0, nil
+	}
+
 	type chunk struct {
 		start int64
 		end   int64
@@ -265,57 +269,86 @@ func (t *table) DeleteRows(ctx context.Context, filter *Filter) (int, error) {
 	// each chunk represents a collection of rows that all need to be shifted by the same amount
 	chunks := make([]chunk, 0, len(rows))
 
+	var start *int64
 	for i := 0; i < len(rows); i++ {
-		start := rows[i].index + 1
+		row := rows[i]
+
+		if start == nil {
+			temp := row.index + 1
+			start = &temp
+		}
+
 		var end int64
 
 		// if last row
-		if i != len(rows)-1 {
+		if i == len(rows)-1 {
 			end = t.rowCount - 1
 		} else {
-			end = rows[i+1].index - 1
+			// check for consecutive rows
+			next := rows[i+1]
+			if next.index == row.index+1 {
+				start = nil
+				continue
+			} else {
+				end = next.index - 1
+			}
 		}
 
 		chunks = append(chunks, chunk{
-			start: start,
+			start: *start,
 			end:   end,
-			shift: int64(i),
+			shift: int64(i + 1),
 		})
+	}
+
+	// each chunk is shifted together, so need to ensure not too much data
+	// is loaded into mem at once
+	maxChunkSize := int64(1048576) // 1MB
+
+	temp := make([]chunk, 0, len(chunks))
+	for _, current := range chunks {
+		rowCount := current.end - current.start + 1
+		chunkSize := rowCount * t.rowByteCount
+
+		// if split needed
+		if chunkSize > maxChunkSize && rowCount > 2 {
+			split := (current.end + current.start) / 2
+
+			temp = append(temp, chunk{
+				start: current.start,
+				end:   split,
+				shift: current.shift,
+			})
+
+			temp = append(temp, chunk{
+				start: split + 1,
+				end:   current.end,
+				shift: current.shift,
+			})
+		}
 	}
 
 	t.mrw.Lock()
 	defer t.mrw.Unlock()
 
-	reader := bufio.NewReader(t.file)
 	file := t.file
 
 	for _, chunk := range chunks {
-		_, err = reader.Discard(int(t.rowByteCount))
+		rowCount := chunk.end - chunk.start + 1
+		chunkSize := rowCount * t.rowByteCount
+
+		// number of bytes before the first byte of the chunk
+		offset := (chunk.start * t.rowByteCount) + t.headerByteCount
+
+		chunkBytes := make([]byte, chunkSize)
+		_, err := file.ReadAt(chunkBytes, offset)
 		if err != nil {
-			return 0, fmt.Errorf("could not skip start deleted row: %w", err)
+			return 0, err
 		}
 
-		// shifting is done per row to prevent a massive chunk of the db being loaded into memory
-		for i := chunk.start; i <= chunk.end; i++ {
-			rowBytes := make([]byte, t.rowByteCount)
-
-			n, err := io.ReadFull(reader, rowBytes)
-			if err != nil {
-				return 0, fmt.Errorf("could not shift row %d: %w", i, err)
-			}
-			rowBytes = rowBytes[:n]
-
-			// index of the row's new position
-			newIndex := i - chunk.shift
-			_, err = file.WriteAt(rowBytes, (newIndex*t.rowByteCount)+t.headerByteCount)
-			if err != nil {
-				return 0, fmt.Errorf("could not write row %d: %w", i, err)
-			}
-		}
-
-		_, err = reader.Discard(int(t.rowByteCount))
+		_, err = file.WriteAt(chunkBytes, offset-(chunk.shift*t.rowByteCount))
 		if err != nil {
-			return 0, fmt.Errorf("could not skip end deleted row: %w", err)
+			return 0, err
 		}
 	}
 

@@ -4,6 +4,7 @@ INSERT INTO table VALUES (daniel)
 CREATE TABLE multi (p int, h int)
 insert into multi VALUES (1, 2)
 
+SELECT * FROM people
 SELECT * FROM people WHERE name="penny"
 SELECT * FROM people WHERE name<="a"
 
@@ -13,3 +14,6 @@ INSERT INTO people VALUES (annie, 18)
 INSERT INTO people VALUES (carson, 18)
 INSERT INTO people VALUES (dakota, 18)
 INSERT INTO people VALUES (rayyan, 18)
+
+DELETE FROM people
+DELETE FROM people WHERE name="penny"

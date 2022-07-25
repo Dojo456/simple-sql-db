@@ -89,7 +89,7 @@ existing table
 
 // OpenTable returns a table struct that tableReader and tableWriters can attach to. If table with given name does not
 // exist, an error will be returned. An opened table needs to be cleaned up later through the Cleanable interface
-func OpenTable(name string) (OperableTable, error) {
+func OpenTable(ctx context.Context, name string) (OperableTable, error) {
 	path := getTableFilePath(name)
 
 	f, err := os.OpenFile(path, os.O_RDWR, 0644)

@@ -16,6 +16,7 @@ const (
 	KeywordTable  keyword = "table"
 	KeywordCreate keyword = "create"
 	KeywordInsert keyword = "insert"
+	KeywordDelete keyword = "delete"
 	KeywordInto   keyword = "into"
 	KeywordValues keyword = "values"
 	KeywordWhere  keyword = "where"
@@ -36,7 +37,7 @@ func asKeyword(s string) keyword {
 
 func (k keyword) IsValid() bool {
 	switch k {
-	case KeywordSelect, KeywordFrom, KeywordAs, KeywordTable, KeywordCreate, KeywordInsert, KeywordInto, KeywordValues, KeywordWhere:
+	case KeywordSelect, KeywordFrom, KeywordAs, KeywordTable, KeywordCreate, KeywordInsert, KeywordInto, KeywordValues, KeywordWhere, KeywordDelete:
 		return true
 	}
 	return false
@@ -283,6 +284,7 @@ const (
 	CreateTableCommand command = iota
 	SelectCommand
 	InsertCommand
+	DeleteCommand
 )
 
 func getCommand(keywords []keyword) (*command, error) {
@@ -320,7 +322,17 @@ func getCommand(keywords []keyword) (*command, error) {
 				}
 			}
 		}
-
+	case KeywordDelete:
+		{
+			if len(keywords) > 1 {
+				second := keywords[1]
+				switch second {
+				case KeywordFrom:
+					returner = DeleteCommand
+					found = true
+				}
+			}
+		}
 	}
 
 	if !found {
@@ -344,6 +356,8 @@ func (c command) captureArguments(tokens []token, start int) (args []evaluable, 
 		args, argsCaptured, err = captureInsertArgs(truncated)
 	case SelectCommand:
 		args, argsCaptured, err = captureSelectArgs(truncated)
+	case DeleteCommand:
+		args, argsCaptured, err = captureDeleteArgs(truncated)
 	}
 
 	if err != nil {
@@ -445,8 +459,8 @@ func captureSelectArgs(truncated []token) ([]evaluable, int, error) {
 
 			wT := make([]token, 3)
 			for j := 0; j < 2; j++ {
-				wT[i] = token{
-					s: stringTokens[i],
+				wT[j] = token{
+					s: stringTokens[j],
 					t: TokenTypeValue,
 				}
 			}
@@ -488,5 +502,75 @@ func captureSelectArgs(truncated []token) ([]evaluable, int, error) {
 	}
 
 	// keywords captured are not part of the args but do count as tokens
+	return args, len(args) + keywordsCaptured, nil
+}
+
+func captureDeleteArgs(truncated []token) ([]evaluable, int, error) {
+	if len(truncated) < 1 {
+		return nil, 0, fmt.Errorf("not enough arguments")
+	}
+
+	var args []evaluable
+	keywordsCaptured := 0
+
+	name := truncated[0]
+	if name.t != TokenTypeValue {
+		return nil, 0, fmt.Errorf("invalid table name")
+	}
+	args = append(args, asValue(name.s))
+
+	if len(truncated) > 1 && keyword(strings.ToLower(truncated[1].s)) == KeywordWhere {
+		keywordsCaptured++
+		var wT []token
+
+		if len(truncated) == 5 { // in format WHERE field = value
+			wT = truncated[2:]
+		} else { // in format WHERE field=value
+			stringTokens := strings.Split(truncated[2].s, "=")
+
+			wT := make([]token, 3)
+			for j := 0; j < 2; j++ {
+				wT[j] = token{
+					s: stringTokens[j],
+					t: TokenTypeValue,
+				}
+			}
+
+			valueTokenString := stringTokens[2]
+			valueTokenType := TokenTypeValue
+
+			if isQuote(rune(valueTokenString[0])) && isQuote(rune(valueTokenString[len(valueTokenString)-1])) {
+				valueTokenType = TokenTypeQuoteGroup
+			}
+
+			wT[2] = token{
+				s: valueTokenString,
+				t: valueTokenType,
+			}
+		}
+
+		// parse field name
+		fieldNameToken := wT[0]
+		if fieldNameToken.t != TokenTypeValue {
+			return nil, 0, fmt.Errorf("could not parse WHERE clause")
+		}
+		args = append(args, value{val: fieldNameToken.s})
+
+		// parse operator
+		operatorToken := wT[1]
+		if fieldNameToken.t != TokenTypeValue {
+			return nil, 0, fmt.Errorf("could not parse WHERE clause")
+		}
+		operator := backend.Operator(operatorToken.s)
+		if !operator.IsValid() {
+			return nil, 0, fmt.Errorf("%s is not a valid operator", operatorToken.s)
+		}
+		args = append(args, value{val: operator})
+
+		// parse valueString to compare to
+		valueToken := wT[2]
+		args = append(args, value{val: valueToken.s})
+	}
+
 	return args, len(args) + keywordsCaptured, nil
 }

@@ -63,6 +63,10 @@ func (e *executable) Value(ctx context.Context, engine *SQLEngine) (interface{},
 		{
 			returner, err = engine.getRows(ctx, argValues)
 		}
+	case DeleteCommand:
+		{
+			returner, err = engine.deleteRows(ctx, argValues)
+		}
 	}
 
 	if err != nil {

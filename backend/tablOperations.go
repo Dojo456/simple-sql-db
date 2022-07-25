@@ -1,8 +1,10 @@
 package backend
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"io"
 )
 
 // InsertRow adds a new row to the table with the given Values. It will attempt to parse the Values into the
@@ -40,9 +42,133 @@ func (t *table) InsertRow(ctx context.Context, vals []Value) (int, error) {
 	return 1, nil
 }
 
-// GetRows returns the selected fields from a table in a two-dimensional string slice which represents the rows within
-// a table that satisfies the filter. If fields is a zero length slice, all fields will be returned. If the filter is
-// nil, all rows will be returned.
+// Operator are the supported comparison operators in a WHERE clause of SELECT statement
+type Operator string
+
+const (
+	OperatorEqual              Operator = "="
+	OperatorNotEqual           Operator = "!="
+	OperatorLessThan           Operator = "<"
+	OperatorLessThanOrEqual    Operator = "<="
+	OperatorGreaterThan        Operator = ">"
+	OperatorGreaterThanOrEqual Operator = ">="
+)
+
+func (o Operator) IsValid() bool {
+	switch o {
+	case OperatorEqual, OperatorNotEqual, OperatorLessThan, OperatorLessThanOrEqual, OperatorGreaterThan, OperatorGreaterThanOrEqual:
+		return true
+	}
+
+	return false
+}
+
+type Filter struct {
+	Value
+	FieldName string
+	Operator  Operator
+}
+
+// Row is a Value slice alongside with the file system index of the row.
+type Row struct {
+	Values []Value
+	index  int64
+}
+
+// rowsThatMatch returns an array of rows that match the specified filter. This should be used as the implementation
+// of the WHERE clause for any statements that support one. If the filter is nil, all rows will be selected.
+func (t *table) rowsThatMatch(ctx context.Context, filter *Filter) ([]Row, error) {
+
+	// validate filter
+	if filter != nil {
+		field, err := t.FieldWithName(filter.FieldName)
+		if err != nil {
+			return nil, err
+		}
+
+		if field.Type != filter.Type {
+			return nil, fmt.Errorf("%s.%s is of type %s", t.Name, field.Name, field.Type)
+		}
+	}
+
+	// begin file operations
+	t.mrw.RLock()
+	defer t.mrw.RUnlock()
+
+	_, err := t.file.Seek(t.headerByteCount, 0)
+	if err != nil {
+		return nil, fmt.Errorf("could not skip table header: %w", err)
+	}
+
+	reader := bufio.NewReader(t.file)
+
+	returner := make([]Row, 0, t.rowCount)
+
+	var i int64 = 0
+	for ; i < t.rowCount; i++ {
+		row := make([]Value, 0, len(t.Fields))
+		shouldAddRow := true
+
+		var cursor int64 = 0
+		rowBytes := make([]byte, t.rowByteCount)
+		_, err := io.ReadFull(reader, rowBytes)
+		if err != nil {
+			return nil, fmt.Errorf("could not read row %d: %w", i, err)
+		}
+
+		for _, field := range t.Fields {
+			if shouldAddRow {
+				isFilterField := false
+				if filter != nil {
+					isFilterField = field.Name == filter.FieldName
+				}
+
+				// read cell
+				cellBytes := rowBytes[cursor : cursor+field.Type.Size()]
+				var cell interface{}
+				switch field.Type {
+				case PrimitiveString:
+					cell = bToS(cellBytes)
+				case PrimitiveFloat:
+					cell = bToF64(cellBytes)
+				case PrimitiveInt:
+					cell = bToI64(cellBytes)
+				}
+
+				if isFilterField {
+					switch c := cell.(type) {
+					case string:
+						shouldAddRow = compareValues(c, filter.Operator, filter.Val.(string))
+					case int64:
+						shouldAddRow = compareValues(c, filter.Operator, filter.Val.(int64))
+					case float64:
+						shouldAddRow = compareValues(c, filter.Operator, filter.Val.(float64))
+					}
+				}
+
+				row = append(row, Value{
+					Type:      field.Type,
+					Val:       cell,
+					FieldName: field.Name,
+				})
+			}
+
+			cursor += field.Type.Size()
+		}
+
+		if shouldAddRow {
+			returner = append(returner, Row{
+				Values: row,
+				index:  i,
+			})
+		}
+	}
+
+	return returner, nil
+}
+
+// GetRows returns the selected fields from a table that matches the filter. If fields is a zero length slice, all
+// fields will be returned. If the filter is nil, all rows will be returned.
 func (t *table) GetRows(ctx context.Context, fields []string, filter *Filter) ([]Row, error) {
 	shouldSelectField := make([]bool, len(t.Fields))
 	fieldsToSelectCount := len(t.Fields)
@@ -95,4 +221,118 @@ func (t *table) GetRows(ctx context.Context, fields []string, filter *Filter) ([
 	}
 
 	return returner, nil
+}
+
+// DeleteRows deletes all rows that match the filter. If the filter is nil, all rows will be deleted. It returns the
+// number of rows deleted.
+func (t *table) DeleteRows(ctx context.Context, filter *Filter) (int, error) {
+	// delete all rows
+	if filter == nil {
+		t.mrw.Lock()
+		defer t.mrw.Unlock()
+
+		file := t.file
+
+		_, err := file.Seek(0, 0)
+		if err != nil {
+			return 0, fmt.Errorf("could not seek before truncate: %w", err)
+		}
+
+		err = file.Truncate(t.headerByteCount)
+		if err != nil {
+			return 0, fmt.Errorf("could not truncate: %w", err)
+		}
+
+		affected := t.rowCount
+
+		t.rowCount = 0
+		t.fileByteCount = t.headerByteCount
+
+		return int(affected), nil
+	}
+
+	rows, err := t.rowsThatMatch(ctx, filter)
+	if err != nil {
+		return 0, err
+	}
+
+	type chunk struct {
+		start int64
+		end   int64
+		shift int64
+	}
+
+	// each chunk represents a collection of rows that all need to be shifted by the same amount
+	chunks := make([]chunk, 0, len(rows))
+
+	for i := 0; i < len(rows); i++ {
+		start := rows[i].index + 1
+		var end int64
+
+		// if last row
+		if i != len(rows)-1 {
+			end = t.rowCount - 1
+		} else {
+			end = rows[i+1].index - 1
+		}
+
+		chunks = append(chunks, chunk{
+			start: start,
+			end:   end,
+			shift: int64(i),
+		})
+	}
+
+	t.mrw.Lock()
+	defer t.mrw.Unlock()
+
+	reader := bufio.NewReader(t.file)
+	file := t.file
+
+	for _, chunk := range chunks {
+		_, err = reader.Discard(int(t.rowByteCount))
+		if err != nil {
+			return 0, fmt.Errorf("could not skip start deleted row: %w", err)
+		}
+
+		// shifting is done per row to prevent a massive chunk of the db being loaded into memory
+		for i := chunk.start; i <= chunk.end; i++ {
+			rowBytes := make([]byte, t.rowByteCount)
+
+			n, err := io.ReadFull(reader, rowBytes)
+			if err != nil {
+				return 0, fmt.Errorf("could not shift row %d: %w", i, err)
+			}
+			rowBytes = rowBytes[:n]
+
+			// index of the row's new position
+			newIndex := i - chunk.shift
+			_, err = file.WriteAt(rowBytes, (newIndex*t.rowByteCount)+t.headerByteCount)
+			if err != nil {
+				return 0, fmt.Errorf("could not write row %d: %w", i, err)
+			}
+		}
+
+		_, err = reader.Discard(int(t.rowByteCount))
+		if err != nil {
+			return 0, fmt.Errorf("could not skip end deleted row: %w", err)
+		}
+	}
+
+	_, err = file.Seek(0, 0)
+	if err != nil {
+		return 0, fmt.Errorf("could not seek before truncate: %w", err)
+	}
+
+	bytesToTruncate := int64(len(rows)) * t.rowByteCount
+
+	err = file.Truncate(t.fileByteCount - bytesToTruncate)
+	if err != nil {
+		return 0, fmt.Errorf("could not truncate: %w", err)
+	}
+
+	t.rowCount -= int64(len(rows))
+	t.fileByteCount -= bytesToTruncate
+
+	return len(rows), nil
 }

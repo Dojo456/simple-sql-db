@@ -6,3 +6,10 @@ insert into multi VALUES (1, 2)
 
 SELECT * FROM people WHERE name="penny"
 SELECT * FROM people WHERE name<="a"
+
+INSERT INTO people VALUES (daniel, 17)
+INSERT INTO people VALUES (penny, 17)
+INSERT INTO people VALUES (annie, 18)
+INSERT INTO people VALUES (carson, 18)
+INSERT INTO people VALUES (dakota, 18)
+INSERT INTO people VALUES (rayyan, 18)

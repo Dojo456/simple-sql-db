@@ -131,7 +131,7 @@ func (e *SQLEngine) getRows(ctx context.Context, args []interface{}) ([][]string
 		return nil, err
 	}
 
-	// there is a WHERE clause
+	// if there is a WHERE clause
 	var filter *backend.Filter
 	if len(args) > 2 {
 		if len(args) < 5 {
@@ -144,12 +144,12 @@ func (e *SQLEngine) getRows(ctx context.Context, args []interface{}) ([][]string
 		// operator name is fourth argument
 		operator := args[3].(backend.Operator)
 
-		// value name is fifth argument
 		field, err := t.FieldWithName(fieldName)
 		if err != nil {
 			return nil, err
 		}
 
+		// value name is fifth argument
 		value, err := field.NewValue(args[4])
 		if err != nil {
 			return nil, err
@@ -203,12 +203,64 @@ func (e *SQLEngine) getRows(ctx context.Context, args []interface{}) ([][]string
 	return returner, nil
 }
 
+func (e *SQLEngine) deleteRows(ctx context.Context, args []interface{}) (int, error) {
+	if len(args) < 1 {
+		return 0, fmt.Errorf("not enough arguments")
+	}
+
+	// name is first argument
+	name := args[0].(string)
+
+	t, err := e.getTable(ctx, name)
+	if err != nil {
+		return 0, err
+	}
+
+	// if there is a WHERE clause
+	var filter *backend.Filter
+	if len(args) > 1 {
+		if len(args) < 4 {
+			return 0, fmt.Errorf("not enough arguments for WHERE clause")
+		}
+
+		// field name is second argument
+		fieldName := args[1].(string)
+
+		// operator name is third argument
+		operator := args[2].(backend.Operator)
+
+		field, err := t.FieldWithName(fieldName)
+		if err != nil {
+			return 0, err
+		}
+
+		// value name is fourth argument
+		value, err := field.NewValue(args[3])
+		if err != nil {
+			return 0, err
+		}
+
+		filter = &backend.Filter{
+			FieldName: fieldName,
+			Operator:  operator,
+			Value:     *value,
+		}
+	}
+
+	n, err := t.DeleteRows(ctx, filter)
+	if err != nil {
+		return 0, err
+	}
+
+	return n, nil
+}
+
 func (e *SQLEngine) getTable(ctx context.Context, name string) (backend.OperableTable, error) {
 	var err error
 
 	table, open := e.openTables[name]
 	if !open {
-		table, err = backend.OpenTable(name)
+		table, err = backend.OpenTable(ctx, name)
 		if err != nil {
 			return nil, err
 		}

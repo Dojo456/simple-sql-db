@@ -619,7 +619,7 @@ func captureUpdateArgs(truncated []token) ([]evaluable, int, error) {
 			return nil, 0, fmt.Errorf("could not parse value number %d: %w", i+1, err)
 		}
 
-		if op.s != "=" {
+		if op != backend.OperatorEqual {
 			return nil, 0, fmt.Errorf("value statement must use \"=\" between field name and value")
 		}
 
@@ -630,64 +630,90 @@ func captureUpdateArgs(truncated []token) ([]evaluable, int, error) {
 	}
 	args = append(args, asValue(vals))
 
+	var whereArg *whereClause
 	if hasWhereClause {
 		if tokensUsed+3 > len(truncated) {
 			return nil, 0, fmt.Errorf("not enough arguements for WHERE clause")
 		}
 
-		whereArg, err := parseWhereClause(truncated[tokensUsed : tokensUsed+3])
+		temp, err := parseWhereClause(truncated[tokensUsed : tokensUsed+3])
 		if err != nil {
 			return nil, 0, err
 		}
+		whereArg = &temp
 
-		args = append(args, whereArg...)
 		tokensUsed += 3
 	}
+	args = append(args, asValue(whereArg))
 
 	return args, tokensUsed, nil
 }
 
-// parseWhereClause parses a WHERE clause given in the form of a token slice of len 3 and returns a
-// slice with length 3 of those fields parsed. It is a wrapper over parseEquation to accommodate
-// a common use case of that function.
-func parseWhereClause(tokens []token) ([]evaluable, error) {
-	e1, op, e2, err := parseEquation(tokens)
+type whereClause struct {
+	untypedValue
+	Operator backend.Operator
+}
+
+func (c *whereClause) Filter(t backend.OperableTable) (backend.Filter, error) {
+	field, err := t.FieldWithName(c.FieldName)
 	if err != nil {
-		return nil, err
+		return backend.Filter{}, err
 	}
 
-	returner := []evaluable{asValue(e1.s), asValue(op.s), asValue(e2.s)}
+	val, err := field.NewValue(c.Val)
+	if err != nil {
+		return backend.Filter{}, err
+	}
 
-	return returner, nil
+	return backend.Filter{
+		Value:     val,
+		Operator:  c.Operator,
+		FieldName: c.FieldName,
+	}, nil
+}
+
+// parseWhereClause parses a WHERE clause given in the form of a token slice of len 3 and returns a
+// slice with length 3 of those fields parsed. It is a wrapper over parseEquation to accommodate
+// a common use case of that function as the parser of a WHERE clause.
+func parseWhereClause(tokens []token) (whereClause, error) {
+	e1, op, e2, err := parseEquation(tokens)
+	if err != nil {
+		return whereClause{}, err
+	}
+
+	return whereClause{untypedValue{
+		Val:       e2.s,
+		FieldName: e1.s,
+	}, op}, nil
 }
 
 // parseEquation parses a statement in token slice of len 3. It returns the three
 // respective elements of the equation.
-func parseEquation(tokens []token) (e1 token, operator token, e2 token, err error) {
+func parseEquation(tokens []token) (e1 token, operator backend.Operator, e2 token, err error) {
 	if len(tokens) < 3 {
-		return token{}, token{}, token{}, fmt.Errorf("not enough arguments")
+		return token{}, "", token{}, fmt.Errorf("not enough arguments")
 	} else if len(tokens) != 3 {
-		return token{}, token{}, token{}, fmt.Errorf("invalid syntax")
+		return token{}, "", token{}, fmt.Errorf("invalid syntax")
 	}
 
 	// parse field name
 	fieldNameToken := tokens[0]
 	if fieldNameToken.t != TokenTypeValue {
-		return token{}, token{}, token{}, fmt.Errorf("invalid first operand")
+		return token{}, "", token{}, fmt.Errorf("invalid first operand")
 	}
 
 	// parse operator
 	operatorToken := tokens[1]
 	op := backend.Operator(operatorToken.s)
 	if !op.IsValid() {
-		return token{}, token{}, token{}, fmt.Errorf("%s is not a valid operator", operatorToken.s)
+		return token{}, "", token{}, fmt.Errorf("%s is not a valid operator", operatorToken.s)
 	}
 
 	// parse valueString to compare to
 	valueToken := tokens[2]
 	if valueToken.t != TokenTypeValue && valueToken.t != TokenTypeQuoteGroup {
-		return token{}, token{}, token{}, fmt.Errorf("invalid value to compare to")
+		return token{}, "", token{}, fmt.Errorf("invalid value to compare to")
 	}
 
-	return tokens[0], tokens[1], tokens[2], nil
+	return tokens[0], backend.Operator(tokens[1].s), tokens[2], nil
 }

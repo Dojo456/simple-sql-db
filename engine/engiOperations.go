@@ -150,7 +150,7 @@ func (e *SQLEngine) insertRow(ctx context.Context, args []interface{}) (int, err
 			return 0, fmt.Errorf("error with %s.%s: %w", table.GetName(), field.Name, err)
 		}
 
-		values[i] = *val
+		values[i] = val
 	}
 
 	count, err := table.InsertRow(ctx, values)
@@ -204,7 +204,7 @@ func (e *SQLEngine) getRows(ctx context.Context, args []interface{}) ([][]string
 		filter = &backend.Filter{
 			FieldName: fieldName,
 			Operator:  operator,
-			Value:     *value,
+			Value:     value,
 		}
 	}
 
@@ -289,7 +289,7 @@ func (e *SQLEngine) deleteRows(ctx context.Context, args []interface{}) (int, er
 		filter = &backend.Filter{
 			FieldName: fieldName,
 			Operator:  operator,
-			Value:     *value,
+			Value:     value,
 		}
 	}
 
@@ -299,6 +299,60 @@ func (e *SQLEngine) deleteRows(ctx context.Context, args []interface{}) (int, er
 	}
 
 	return n, nil
+}
+
+// (name string, values []untypedValue, filter *whereClause)
+func (e *SQLEngine) updateRows(ctx context.Context, args []interface{}) (int, error) {
+	if len(args) < 3 {
+		return 0, fmt.Errorf("not enough arguments")
+	}
+
+	// name is first argument
+	name := args[0].(string)
+
+	t, err := e.getTable(ctx, name)
+	if err != nil {
+		return 0, err
+	}
+
+	// values is second argument
+	rawVals := args[1].([]untypedValue)
+
+	fieldsUsed := map[string]bool{}
+	var vals []backend.Value
+
+	for _, rawVal := range rawVals {
+		if fieldsUsed[rawVal.FieldName] {
+			return 0, fmt.Errorf("%s.%s cannot be SET twice", t.GetName(), rawVal.FieldName)
+		}
+
+		field, err := t.FieldWithName(rawVal.FieldName)
+		if err != nil {
+			return 0, fmt.Errorf("error with field %s.%s: %w", t.GetName(), rawVal.FieldName, err)
+		}
+
+		val, err := field.NewValue(rawVal.Val)
+		if err != nil {
+			return 0, fmt.Errorf("error with field %s.%s: %w", t.GetName(), rawVal.FieldName, err)
+		}
+
+		vals = append(vals, val)
+	}
+
+	// where clause is third argument
+	where := args[2].(*whereClause)
+
+	var filter *backend.Filter
+	if where != nil {
+		temp, err := where.Filter(t)
+		if err != nil {
+			return 0, fmt.Errorf("error with WHERE clause: %w", err)
+		}
+
+		filter = &temp
+	}
+
+	return t.UpdateRows(ctx, vals, filter)
 }
 
 func (e *SQLEngine) getTable(ctx context.Context, name string) (backend.OperableTable, error) {

@@ -15,12 +15,6 @@ type evaluable interface {
 	Value(ctx context.Context) (interface{}, error)
 }
 
-// toEvaluable parses a string and returns an evaluable which can be used to be build the evaluation tree. It will make
-// either an executable or value based on the contents of the string.
-func toEvaluable(s string) (*evaluable, error) {
-	return nil, nil
-}
-
 // executable is an SQL statement that can be executed to obtain a value. It implements the evaluable interface.
 type executable struct {
 	Cmd  command
@@ -60,6 +54,10 @@ func (e *executable) Value(ctx context.Context, engine *SQLEngine) (interface{},
 		{
 			returner, err = engine.deleteRows(ctx, argValues)
 		}
+	case UpdateCommand:
+		{
+			returner, err = engine.updateRows(ctx, argValues)
+		}
 	}
 
 	if err != nil {
@@ -88,7 +86,7 @@ type stringValue struct {
 	val string
 }
 
-func (v stringValue) Value(ctx context.Context) (string, error) {
+func (v stringValue) Value(ctx context.Context) (interface{}, error) {
 	return v.val, nil
 }
 

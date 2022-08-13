@@ -74,15 +74,15 @@ type Field struct {
 // NewValue creates a Value for the Field. This is the preferred way to create a Value struct. If the val is
 // of the correct Go type for that field, it will be entered directly. If it is of string type and the field is not,
 // it will attempt to parse the value into the correct type.
-func (field Field) NewValue(val interface{}) (*Value, error) {
+func (field Field) NewValue(val interface{}) (Value, error) {
 	switch field.Type {
 	case PrimitiveString:
 		{
 			s, ok := val.(string)
 			if !ok {
-				return nil, fmt.Errorf("must be string")
+				return Value{}, fmt.Errorf("must be string")
 			}
-			return &Value{
+			return Value{
 				Type:      PrimitiveString,
 				Val:       s,
 				FieldName: field.Name,
@@ -95,17 +95,17 @@ func (field Field) NewValue(val interface{}) (*Value, error) {
 			if !ok {
 				s, ok := val.(string)
 				if !ok {
-					return nil, fmt.Errorf("could not parse int")
+					return Value{}, fmt.Errorf("could not parse int")
 				}
 
 				sI, err := strconv.Atoi(s)
 				if err != nil {
-					return nil, fmt.Errorf("could not parse int")
+					return Value{}, fmt.Errorf("could not parse int")
 				}
 
 				i = int64(sI)
 			}
-			return &Value{
+			return Value{
 				Type:      PrimitiveInt,
 				Val:       i,
 				FieldName: field.Name,
@@ -117,17 +117,17 @@ func (field Field) NewValue(val interface{}) (*Value, error) {
 			if !ok {
 				s, ok := val.(string)
 				if !ok {
-					return nil, fmt.Errorf("could not parse float")
+					return Value{}, fmt.Errorf("could not parse float")
 				}
 
 				sF, err := strconv.ParseFloat(s, 64)
 				if err != nil {
-					return nil, fmt.Errorf("could not parse float")
+					return Value{}, fmt.Errorf("could not parse float")
 				}
 
 				f = sF
 			}
-			return &Value{
+			return Value{
 				Type:      PrimitiveFloat,
 				Val:       f,
 				FieldName: field.Name,
@@ -135,7 +135,7 @@ func (field Field) NewValue(val interface{}) (*Value, error) {
 		}
 	}
 
-	return nil, nil
+	return Value{}, nil
 }
 
 type table struct {
@@ -159,6 +159,7 @@ type OperableTable interface {
 	InsertRow(ctx context.Context, vals []Value) (int, error)
 	GetRows(ctx context.Context, fields []string, filter *Filter) ([]Row, error)
 	DeleteRows(ctx context.Context, filter *Filter) (int, error)
+	UpdateRows(ctx context.Context, values []Value, filter *Filter) (int, error)
 }
 
 func (t *table) GetName() string {

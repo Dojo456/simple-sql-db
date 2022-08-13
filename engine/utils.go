@@ -44,12 +44,18 @@ func assertString(val interface{}) (string, error) {
 	return s, nil
 }
 
-// cleanString removes all newline characters and replaces it with spaces.
-// It also removes redundant white space characters.
+var regexpSpaceBeforeEqual = regexp.MustCompile(" =")
+var regexpSpaceAfterEqual = regexp.MustCompile("= ")
+
+// cleanString removes all newline characters and replaces it with spaces. It also removes redundant white
+// space characters, such as the ones before and after an equal sign.
 func cleanString(s string) string {
 	s = strings.ReplaceAll(s, "\n", " ")
 	s = strings.ReplaceAll(s, "  ", " ")
 	s = strings.ReplaceAll(s, ", ", ",")
+
+	s = regexpSpaceBeforeEqual.ReplaceAllString(s, "=")
+	s = regexpSpaceAfterEqual.ReplaceAllString(s, "=")
 
 	return s
 }

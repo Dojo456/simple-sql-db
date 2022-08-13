@@ -9,15 +9,15 @@ import (
 
 // InsertRow adds a new row to the table with the given Values. It will attempt to parse the Values into the
 // correct primitive type, if it is unable to do so, an error will be returned. It returns the number of rows written
-func (t *table) InsertRow(ctx context.Context, vals []Value) (int, error) {
+func (t *table) InsertRow(ctx context.Context, values []Value) (int, error) {
 	fields := t.Fields
 
-	if len(fields) < len(vals) {
+	if len(fields) < len(values) {
 		return 0, fmt.Errorf("there are only %d fields on this table", len(t.Fields))
 	}
 
-	valsMap := make(map[string]Value, len(vals))
-	for _, val := range vals {
+	valsMap := make(map[string]Value, len(values))
+	for _, val := range values {
 		valsMap[val.FieldName] = val
 	}
 
@@ -382,4 +382,63 @@ func (t *table) DeleteRows(ctx context.Context, filter *Filter) (int, error) {
 	t.fileByteCount -= bytesToTruncate
 
 	return len(rows), nil
+}
+
+// UpdateRows updates all rows that match the filter to have the provided values. If the filter is nil, all rows will
+// be updated. It returns the number of rows that had a value changed. Meaning, if a row matches the filter but did
+// not require an update, it will not count towards the return value.
+func (t *table) UpdateRows(ctx context.Context, values []Value, filter *Filter) (int, error) {
+	oldRows, err := t.rowsThatMatch(ctx, filter)
+	if err != nil {
+		return 0, err
+	}
+
+	valsMap := make(map[string]Value, len(values))
+	for _, val := range values {
+		valsMap[val.FieldName] = val
+	}
+
+	type rowBytes struct {
+		index int64
+		bytes []byte
+	}
+
+	newRows := make([]rowBytes, 0, len(oldRows))
+	for _, oldRow := range oldRows {
+		requiresUpdate := false
+		newRow := make([]byte, 0, t.rowByteCount)
+
+		for j, field := range t.Fields {
+			oldVal := oldRow.Values[j]
+
+			if newVal, exists := valsMap[field.Name]; exists {
+				if newVal.Val != oldVal.Val {
+					requiresUpdate = true
+				}
+
+				newRow = append(newRow, newVal.Bytes()...)
+			} else {
+				newRow = append(newRow, oldVal.Bytes()...)
+			}
+		}
+
+		if requiresUpdate {
+			newRows = append(newRows, rowBytes{index: oldRow.index, bytes: newRow})
+		}
+	}
+
+	t.mrw.Lock()
+	defer t.mrw.Unlock()
+
+	file := t.file
+	for _, row := range newRows {
+		offset := (row.index * t.rowByteCount) + t.headerByteCount
+
+		_, err := file.WriteAt(row.bytes, offset)
+		if err != nil {
+			return 0, fmt.Errorf("could not update row %d: %w", row.index, err)
+		}
+	}
+
+	return len(newRows), nil
 }

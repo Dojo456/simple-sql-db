@@ -52,43 +52,6 @@ type Value struct {
 	FieldName string
 }
 
-// stringValue returns a new Value struct with Type PrimitiveString. If the provided string is longer than the max string
-// length (256 runes), the string will be truncated.
-func stringValue(s string) (Value, error) {
-	if len(s) > 256 {
-		s = s[:256]
-	}
-
-	return Value{
-		Type: PrimitiveString,
-		Val:  s,
-	}, nil
-}
-
-func intValue(s string) (Value, error) {
-	i, err := strconv.Atoi(s)
-	if err != nil {
-		return Value{}, err
-	}
-
-	return Value{
-		Type: PrimitiveInt,
-		Val:  int64(i),
-	}, nil
-}
-
-func floatValue(s string) (Value, error) {
-	f, err := strconv.ParseFloat(s, 64)
-	if err != nil {
-		return Value{}, err
-	}
-
-	return Value{
-		Type: PrimitiveFloat,
-		Val:  f,
-	}, nil
-}
-
 func (v *Value) Bytes() []byte {
 	switch val := v.Val.(type) {
 	case string:

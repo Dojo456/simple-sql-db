@@ -79,6 +79,20 @@ func (v value) Value(ctx context.Context) (interface{}, error) {
 }
 
 // asValue simply turns any val into a value struct.
-func asValue(val interface{}) *value {
-	return &value{val: val}
+func asValue(val interface{}) value {
+	return value{val: val}
+}
+
+// value is a raw string value literal. It implements the evaluable interface.
+type stringValue struct {
+	val string
+}
+
+func (v stringValue) Value(ctx context.Context) (string, error) {
+	return v.val, nil
+}
+
+// asValue simply turns any val into a value struct.
+func asStringValue(val string) stringValue {
+	return stringValue{val: val}
 }

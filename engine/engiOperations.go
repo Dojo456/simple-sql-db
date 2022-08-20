@@ -161,62 +161,31 @@ func (e *SQLEngine) insertRow(ctx context.Context, args []interface{}) (int, err
 	return count, nil
 }
 
-func (e *SQLEngine) getRows(ctx context.Context, args []interface{}) ([][]string, error) {
-	if len(args) < 2 {
-		return nil, fmt.Errorf("not enough arguments")
-	}
+// used to represent the arguments for a SELECT statement in SQL. If fields
+// is of len zero or nil, then all fields will be fetched.
+type tableQuery struct {
+	tableName   string
+	fields      []string
+	whereClause *whereClause
+}
 
-	// fields is first argument
-	fields := args[0].([]string)
-
-	// name is second argument
-	name := args[1].(string)
-
-	t, err := e.getTable(ctx, name)
+func (e *SQLEngine) getTableRows(ctx context.Context, query tableQuery) ([][]string, error) {
+	t, err := e.getTable(ctx, query.tableName)
 	if err != nil {
 		return nil, err
 	}
 
-	// if there is a WHERE clause
 	var filter *backend.Filter
-	if len(args) > 2 {
-		if len(args) < 5 {
-			return nil, fmt.Errorf("not enough arguments for WHERE clause")
-		}
-
-		// field name is third argument
-		fieldName := args[2].(string)
-
-		// operator name is fourth argument
-		operator := args[3].(backend.Operator)
-
-		field, err := t.FieldWithName(fieldName)
+	if query.whereClause != nil {
+		temp, err := query.whereClause.Filter(t)
 		if err != nil {
 			return nil, err
 		}
 
-		// value name is fifth argument
-		value, err := field.NewValue(args[4])
-		if err != nil {
-			return nil, err
-		}
-
-		filter = &backend.Filter{
-			FieldName: fieldName,
-			Operator:  operator,
-			Value:     value,
-		}
+		filter = &temp
 	}
 
-	var fieldsToSelect []string
-
-	if fields[0] == "*" {
-		fieldsToSelect = nil
-	} else {
-		fieldsToSelect = fields
-	}
-
-	rows, err := t.GetRows(ctx, fieldsToSelect, filter)
+	rows, err := t.GetRows(ctx, query.fields, filter)
 	if err != nil {
 		return nil, err
 	}

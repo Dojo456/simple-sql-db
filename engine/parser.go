@@ -423,7 +423,7 @@ func captureInsertArgs(truncated []token) ([]evaluable, int, error) {
 }
 
 func captureSelectArgs(truncated []token) ([]evaluable, int, error) {
-	var args []evaluable
+	var tableQuery tableQuery
 
 	i := 0
 
@@ -438,15 +438,21 @@ func captureSelectArgs(truncated []token) ([]evaluable, int, error) {
 
 		fields = append(fields, split...)
 	}
-	args = append(args, asValue(fields))
+	if len(fields) == 1 && fields[0] == "*" { // select all fields
+		fields = nil
+	}
+
+	tableQuery.fields = fields
 
 	i++
 	name := truncated[i].s
-	args = append(args, asValue(name))
+	tableQuery.tableName = name
 
 	i++
 	// search for WHERE clause
 	if i != len(truncated) && keyword(strings.ToLower(truncated[i].s)) == KeywordWhere {
+		var whereClause whereClause
+
 		i++
 		stringTokens := strings.Split(truncated[i].s, "=")
 
@@ -475,7 +481,7 @@ func captureSelectArgs(truncated []token) ([]evaluable, int, error) {
 		if fieldNameToken.t != TokenTypeValue {
 			return nil, 0, fmt.Errorf("could not parse WHERE clause")
 		}
-		args = append(args, asValue(fieldNameToken.s))
+		whereClause.FieldName = fieldNameToken.s
 
 		// parse operator
 		operatorToken := wT[1]
@@ -486,14 +492,16 @@ func captureSelectArgs(truncated []token) ([]evaluable, int, error) {
 		if !operator.IsValid() {
 			return nil, 0, fmt.Errorf("%s is not a valid operator", operatorToken.s)
 		}
-		args = append(args, asValue(operator))
+		whereClause.Operator = operator
 
 		// parse valueString to compare to
 		valueToken := wT[2]
-		args = append(args, asValue(valueToken.s))
+		whereClause.Val = valueToken.s
+
+		tableQuery.whereClause = &whereClause
 	}
 
-	return args, i, nil
+	return []evaluable{asValue(tableQuery)}, i, nil
 }
 
 func captureDeleteArgs(truncated []token) ([]evaluable, int, error) {

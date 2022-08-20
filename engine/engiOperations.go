@@ -163,21 +163,21 @@ func (e *SQLEngine) insertRow(ctx context.Context, args []interface{}) (int, err
 
 // used to represent the arguments for a SELECT statement in SQL. If fields
 // is of len zero or nil, then all fields will be fetched.
-type tableQuery struct {
+type selectRowsArgs struct {
 	tableName   string
 	fields      []string
 	whereClause *whereClause
 }
 
-func (e *SQLEngine) getTableRows(ctx context.Context, query tableQuery) ([][]string, error) {
-	t, err := e.getTable(ctx, query.tableName)
+func (e *SQLEngine) getTableRows(ctx context.Context, args selectRowsArgs) ([][]string, error) {
+	t, err := e.getTable(ctx, args.tableName)
 	if err != nil {
 		return nil, err
 	}
 
 	var filter *backend.Filter
-	if query.whereClause != nil {
-		temp, err := query.whereClause.Filter(t)
+	if args.whereClause != nil {
+		temp, err := args.whereClause.Filter(t)
 		if err != nil {
 			return nil, err
 		}
@@ -185,7 +185,7 @@ func (e *SQLEngine) getTableRows(ctx context.Context, query tableQuery) ([][]str
 		filter = &temp
 	}
 
-	rows, err := t.GetRows(ctx, query.fields, filter)
+	rows, err := t.GetRows(ctx, args.fields, filter)
 	if err != nil {
 		return nil, err
 	}
@@ -218,48 +218,25 @@ func (e *SQLEngine) getTableRows(ctx context.Context, query tableQuery) ([][]str
 	return returner, nil
 }
 
-func (e *SQLEngine) deleteRows(ctx context.Context, args []interface{}) (int, error) {
-	if len(args) < 1 {
-		return 0, fmt.Errorf("not enough arguments")
-	}
+type deleteRowsArgs struct {
+	tableName   string
+	whereClause *whereClause
+}
 
-	// name is first argument
-	name := args[0].(string)
-
-	t, err := e.getTable(ctx, name)
+func (e *SQLEngine) deleteRows(ctx context.Context, args deleteRowsArgs) (int, error) {
+	t, err := e.getTable(ctx, args.tableName)
 	if err != nil {
 		return 0, err
 	}
 
-	// if there is a WHERE clause
 	var filter *backend.Filter
-	if len(args) > 1 {
-		if len(args) < 4 {
-			return 0, fmt.Errorf("not enough arguments for WHERE clause")
-		}
-
-		// field name is second argument
-		fieldName := args[1].(string)
-
-		// operator name is third argument
-		operator := args[2].(backend.Operator)
-
-		field, err := t.FieldWithName(fieldName)
+	if args.whereClause != nil {
+		temp, err := args.whereClause.Filter(t)
 		if err != nil {
 			return 0, err
 		}
 
-		// value name is fourth argument
-		value, err := field.NewValue(args[3])
-		if err != nil {
-			return 0, err
-		}
-
-		filter = &backend.Filter{
-			FieldName: fieldName,
-			Operator:  operator,
-			Value:     value,
-		}
+		filter = &temp
 	}
 
 	n, err := t.DeleteRows(ctx, filter)

@@ -48,11 +48,11 @@ func (e *executable) Value(ctx context.Context, engine *SQLEngine) (interface{},
 		}
 	case SelectCommand:
 		{
-			returner, err = engine.getTableRows(ctx, argValues[0].(tableQuery))
+			returner, err = engine.getTableRows(ctx, argValues[0].(selectRowsArgs))
 		}
 	case DeleteCommand:
 		{
-			returner, err = engine.deleteRows(ctx, argValues)
+			returner, err = engine.deleteRows(ctx, argValues[0].(deleteRowsArgs))
 		}
 	case UpdateCommand:
 		{

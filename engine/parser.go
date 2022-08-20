@@ -423,13 +423,13 @@ func captureInsertArgs(truncated []token) ([]evaluable, int, error) {
 }
 
 func captureSelectArgs(truncated []token) ([]evaluable, int, error) {
-	var tableQuery tableQuery
+	var args selectRowsArgs
 
-	i := 0
+	tokensUsed := 0
 
 	var fields []string
-	for l := len(truncated); i < l; i++ {
-		c := truncated[i]
+	for l := len(truncated); tokensUsed < l; tokensUsed++ {
+		c := truncated[tokensUsed]
 		if strings.ToLower(c.s) == string(KeywordFrom) {
 			break
 		}
@@ -442,66 +442,31 @@ func captureSelectArgs(truncated []token) ([]evaluable, int, error) {
 		fields = nil
 	}
 
-	tableQuery.fields = fields
+	args.fields = fields
 
-	i++
-	name := truncated[i].s
-	tableQuery.tableName = name
+	tokensUsed++
+	name := truncated[tokensUsed].s
+	args.tableName = name
 
-	i++
+	tokensUsed++
 	// search for WHERE clause
-	if i != len(truncated) && keyword(strings.ToLower(truncated[i].s)) == KeywordWhere {
-		var whereClause whereClause
+	if tokensUsed != len(truncated) && keyword(strings.ToLower(truncated[tokensUsed].s)) == KeywordWhere {
+		tokensUsed++
 
-		i++
-		stringTokens := strings.Split(truncated[i].s, "=")
-
-		wT := make([]token, 3)
-		for j := 0; j < 2; j++ {
-			wT[j] = token{
-				s: stringTokens[j],
-				t: TokenTypeValue,
-			}
+		if len(truncated) < tokensUsed+3 {
+			return nil, 0, fmt.Errorf("not enough arguments for WHERE clause")
 		}
 
-		valueTokenString := stringTokens[2]
-		valueTokenType := TokenTypeValue
-
-		if isQuote(rune(valueTokenString[0])) && isQuote(rune(valueTokenString[len(valueTokenString)-1])) {
-			valueTokenType = TokenTypeQuoteGroup
+		whereClause, err := parseWhereClause(truncated[tokensUsed : tokensUsed+3])
+		if err != nil {
+			return nil, 0, err
 		}
 
-		wT[2] = token{
-			s: valueTokenString,
-			t: valueTokenType,
-		}
-
-		// parse field name
-		fieldNameToken := wT[0]
-		if fieldNameToken.t != TokenTypeValue {
-			return nil, 0, fmt.Errorf("could not parse WHERE clause")
-		}
-		whereClause.FieldName = fieldNameToken.s
-
-		// parse operator
-		operatorToken := wT[1]
-		if fieldNameToken.t != TokenTypeValue {
-			return nil, 0, fmt.Errorf("could not parse WHERE clause")
-		}
-		operator := backend.Operator(operatorToken.s)
-		if !operator.IsValid() {
-			return nil, 0, fmt.Errorf("%s is not a valid operator", operatorToken.s)
-		}
-		whereClause.Operator = operator
-
-		// parse valueString to compare to
-		valueToken := wT[2]
-		whereClause.Val = valueToken.s
-
-		tableQuery.whereClause = &whereClause
+		tokensUsed += 3
+		args.whereClause = &whereClause
 	}
 
-	return []evaluable{asValue(tableQuery)}, i, nil
+	return []evaluable{asValue(args)}, tokensUsed, nil
 }
 
 func captureDeleteArgs(truncated []token) ([]evaluable, int, error) {
@@ -509,69 +474,34 @@ func captureDeleteArgs(truncated []token) ([]evaluable, int, error) {
 		return nil, 0, fmt.Errorf("not enough arguments")
 	}
 
-	var args []evaluable
-	keywordsCaptured := 0
+	var args deleteRowsArgs
+	tokensUsed := 0
 
 	name := truncated[0]
 	if name.t != TokenTypeValue {
 		return nil, 0, fmt.Errorf("invalid table name")
 	}
-	args = append(args, asValue(name.s))
+	tokensUsed++
+	args.tableName = name.s
 
+	// if there is a whereClause
 	if len(truncated) > 1 && keyword(strings.ToLower(truncated[1].s)) == KeywordWhere {
-		keywordsCaptured++
-		var wT []token
+		tokensUsed++
 
-		if len(truncated) == 5 { // in format WHERE field = value
-			wT = truncated[2:]
-		} else { // in format WHERE field=value
-			stringTokens := strings.Split(truncated[2].s, "=")
-
-			wT := make([]token, 3)
-			for j := 0; j < 2; j++ {
-				wT[j] = token{
-					s: stringTokens[j],
-					t: TokenTypeValue,
-				}
-			}
-
-			valueTokenString := stringTokens[2]
-			valueTokenType := TokenTypeValue
-
-			if isQuote(rune(valueTokenString[0])) && isQuote(rune(valueTokenString[len(valueTokenString)-1])) {
-				valueTokenType = TokenTypeQuoteGroup
-			}
-
-			wT[2] = token{
-				s: valueTokenString,
-				t: valueTokenType,
-			}
+		if len(truncated) < tokensUsed+3 {
+			return nil, 0, fmt.Errorf("not enough arguments for WHERE clause")
 		}
 
-		// parse field name
-		fieldNameToken := wT[0]
-		if fieldNameToken.t != TokenTypeValue {
-			return nil, 0, fmt.Errorf("could not parse WHERE clause")
+		whereClause, err := parseWhereClause(truncated[tokensUsed : tokensUsed+3])
+		if err != nil {
+			return nil, 0, err
 		}
-		args = append(args, value{val: fieldNameToken.s})
 
-		// parse operator
-		operatorToken := wT[1]
-		if fieldNameToken.t != TokenTypeValue {
-			return nil, 0, fmt.Errorf("could not parse WHERE clause")
-		}
-		operator := backend.Operator(operatorToken.s)
-		if !operator.IsValid() {
-			return nil, 0, fmt.Errorf("%s is not a valid operator", operatorToken.s)
-		}
-		args = append(args, value{val: operator})
-
-		// parse valueString to compare to
-		valueToken := wT[2]
-		args = append(args, value{val: valueToken.s})
+		tokensUsed += 3
+		args.whereClause = &whereClause
 	}
 
-	return args, len(args) + keywordsCaptured, nil
+	return []evaluable{asValue(args)}, tokensUsed, nil
 }
 
 func captureUpdateArgs(truncated []token) ([]evaluable, int, error) {
@@ -680,9 +610,9 @@ func (c *whereClause) Filter(t backend.OperableTable) (backend.Filter, error) {
 	}, nil
 }
 
-// parseWhereClause parses a WHERE clause given in the form of a token slice of len 3 and returns a
-// slice with length 3 of those fields parsed. It is a wrapper over parseEquation to accommodate
-// a common use case of that function as the parser of a WHERE clause.
+// parseWhereClause parses a WHERE clause given in the form of a token slice of len 3 and returns
+// a whereClause that can easily be turned into a backend.Filter. It is a wrapper over parseEquation
+// to accommodate a common use case of that function as the parser of a WHERE clause.
 func parseWhereClause(tokens []token) (whereClause, error) {
 	e1, op, e2, err := parseEquation(tokens)
 	if err != nil {

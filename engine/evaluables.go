@@ -90,7 +90,7 @@ func (v stringValue) Value(ctx context.Context) (interface{}, error) {
 	return v.val, nil
 }
 
-// asValue simply turns any val into a value struct.
+// asStringValue simply turns any string into a stringValue struct.
 func asStringValue(val string) stringValue {
 	return stringValue{val: val}
 }

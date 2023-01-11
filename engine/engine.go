@@ -2,11 +2,11 @@ package engine
 
 import (
 	"context"
-	"fmt"
-	"github.com/Dojo456/simple-sql-db/backend"
 	"log"
 	"runtime/debug"
-	"strings"
+
+	"github.com/Dojo456/simple-sql-db/backend"
+	"github.com/Dojo456/simple-sql-db/engine/parser"
 )
 
 type SQLEngine struct {
@@ -34,53 +34,12 @@ func (e *SQLEngine) Execute(ctx context.Context, statement string) (interface{},
 		}
 	}()
 
-	tokens, err := Parse(statement)
+	err := parser.Validate(statement)
 	if err != nil {
-		return nil, fmt.Errorf("could not parse statement: %w", err)
+		return nil, err
 	}
 
-	var currentKeywords []keyword
-	var exec *executable
-
-	for i := 0; i < len(tokens); i++ {
-		token := tokens[i]
-
-		if isKeyword(token.s) {
-			currentKeywords = append(currentKeywords, asKeyword(token.s))
-		}
-
-		cmd, err := getCommand(currentKeywords)
-		if err != nil {
-			return nil, fmt.Errorf("could not get command: %w", err)
-		}
-
-		if cmd != nil { // an executable command has been found
-			args, end, err := cmd.captureArguments(tokens, i)
-			if err != nil {
-				var mapped []string
-				for _, k := range currentKeywords {
-					mapped = append(mapped, string(k))
-				}
-
-				joined := strings.ToUpper(strings.Join(mapped, " "))
-
-				return nil, fmt.Errorf("invalid arguements for %s statement: %w", joined, err)
-			}
-
-			exec = &executable{
-				Cmd:  *cmd,
-				Args: args,
-			}
-
-			i = end
-		}
-	}
-
-	if exec == nil {
-		return nil, fmt.Errorf("not evaluable")
-	}
-
-	return exec.Value(ctx, e)
+	return nil, err
 }
 
 func (e *SQLEngine) Cleanup() error {

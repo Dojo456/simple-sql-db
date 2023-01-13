@@ -2,8 +2,9 @@ package engine
 
 import (
 	"fmt"
-	"github.com/Dojo456/simple-sql-db/backend"
 	"strings"
+
+	"github.com/Dojo456/simple-sql-db/backend"
 )
 
 type keyword string

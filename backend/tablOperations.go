@@ -5,7 +5,20 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
+	"sync"
 )
+
+type table struct {
+	mrw             *sync.RWMutex
+	file            *os.File
+	fileByteCount   int64
+	headerByteCount int64
+	rowByteCount    int64
+	rowCount        int64
+	Name            string
+	Fields          []Field
+}
 
 // InsertRow adds a new row to the table with the given Values. It will attempt to parse the Values into the
 // correct primitive type, if it is unable to do so, an error will be returned. It returns the number of rows written
@@ -195,7 +208,7 @@ func (t *table) GetRows(ctx context.Context, fields []string, filter *Filter) ([
 		}
 
 		for i, field := range tFieldNames {
-			if contains[string](fields, field) {
+			if contains(fields, field) {
 				shouldSelectField[i] = true
 				fieldsToSelectCount++
 			} else {
@@ -204,7 +217,7 @@ func (t *table) GetRows(ctx context.Context, fields []string, filter *Filter) ([
 		}
 
 		if fieldsToSelectCount != len(fields) {
-			e := exclusive[string](fields, tFieldNames)[0]
+			e := exclusive(fields, tFieldNames)[0]
 
 			return nil, fmt.Errorf("%s.%s does not exist", t.Name, e)
 		}

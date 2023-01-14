@@ -3,149 +3,64 @@ package engine
 import (
 	"context"
 	"fmt"
-	"github.com/Dojo456/simple-sql-db/backend"
 	"strconv"
-	"strings"
+
+	"github.com/Dojo456/simple-sql-db/backend"
+	"github.com/Dojo456/simple-sql-db/engine/language"
 )
 
-func (e *SQLEngine) createTable(ctx context.Context, args []interface{}) (backend.OperableTable, error) {
-	// two args are needed, first the name then the fields as a parenthesis group
-	if len(args) != 2 {
-		return nil, fmt.Errorf("expected 2 arguments, received %d", len(args))
-	}
+func (e *SQLEngine) getTable(ctx context.Context, name string) (backend.OperableTable, error) {
+	var err error
 
-	name, ok := args[0].(string)
-	if !ok {
-		return nil, fmt.Errorf("name of table must be string")
-	}
+	table, open := e.openTables[name]
+	if !open {
+		table, err = backend.OpenTable(ctx, name)
+		if err != nil {
+			return nil, err
+		}
 
-	fieldString, ok := args[1].(string)
-	if !ok {
-		return nil, fmt.Errorf("table fields must be written in string format")
+		e.openTables[name] = table
 	}
-
-	fields, err := parseTableFields(fieldString)
-	if err != nil {
-		return nil, fmt.Errorf("could not parse table fields: %w", err)
-	}
-
-	table, err := backend.CreateTable(ctx, name, fields)
-	if err != nil {
-		return nil, fmt.Errorf("could not create table: %w", err)
-	}
-
-	e.openTables[name] = table
 
 	return table, nil
 }
 
-func parseTableFields(s string) ([]backend.Field, error) {
-	// the cleaned string should have the outer parenthesis removed and no newlines or redundant whitespaces
-	// fields in a CREATE TABLE statement are separated by commas
-	s = cleanString(s)
-
-	rawFields := strings.Split(s, ",")
-	parsedFields := make([]backend.Field, len(rawFields))
-
-	for i, rf := range rawFields {
-		f, err := parseField(rf)
-		if err != nil {
-			return nil, fmt.Errorf("could not parse field %d: %w", i, err)
-		}
-
-		parsedFields[i] = f
-	}
-
-	return parsedFields, nil
-}
-
-func parseField(s string) (backend.Field, error) {
-	// name and data type are separated by space per field
-	tokens := strings.Split(s, " ")
-	if len(tokens) != 2 {
-		return backend.Field{}, fmt.Errorf("%s is not acceptable", s)
-	}
-
-	name := tokens[0]
-	dataType := backend.Primitive(strings.ToLower(tokens[1]))
-
-	if !dataType.IsValid() {
-		return backend.Field{}, fmt.Errorf("%s is not a valid data type", dataType)
-	}
-
-	return backend.Field{
-		Name: name,
-		Type: dataType,
-	}, nil
-}
-
-// (name string, fieldNames CommaSeparateStringSlice, values CommaSeparatedStringSlice)
-func (e *SQLEngine) insertRow(ctx context.Context, args []interface{}) (int, error) {
-	name, ok := args[0].(string)
-	if !ok {
-		return 0, fmt.Errorf("name of table must be string")
-	}
-
-	// fieldNames is a string slice of values separated by commas
-	var sFields []string
-	if len(args[1].(string)) != 0 {
-		sFields = strings.Split(args[1].(string), ",")
-	}
-
-	visited := make(map[string]bool, len(sFields))
-	for _, sField := range sFields {
-		if visited[sField] {
-			return 0, fmt.Errorf("cannot insert into same field twice: %s", sField)
-		}
-
-		visited[sField] = true
-	}
-
-	// values is a string slice of values separated by commas
-	sValues := strings.Split(args[2].(string), ",")
-
-	table, err := e.getTable(ctx, name)
+func (e *SQLEngine) insertRow(ctx context.Context, args *language.InsertArgs) (int, error) {
+	table, err := e.getTable(ctx, args.TableName)
 	if err != nil {
 		return 0, fmt.Errorf("could not open table file: %w", err)
+	}
+
+	// set of all fields in the table for quick checking
+	tFields := map[string]backend.Field{}
+	for _, field := range table.GetFields() {
+		tFields[field.Name] = field
 	}
 
 	// fields to insert into in order
 	var iFields []backend.Field
 
-	tFields := table.GetFields()
-	if len(sFields) == 0 { // fieldNames omitted, all fields are being inserted into in, in order
-		if len(sValues) != len(tFields) {
-			return 0, fmt.Errorf("mismatched number of values to fields: %d values, %d fields", len(sValues), len(tFields))
-		}
+	if args.HasFieldNames {
+		iFields = make([]backend.Field, len(args.Values))
 
-		iFields = tFields
-	} else {
-		iFields = make([]backend.Field, len(sValues))
+		for _, uVal := range args.Values {
+			field, exists := tFields[uVal.FieldName]
 
-		for i, sField := range sFields {
-			found := false
-
-			for j, tField := range tFields {
-				if tField.Name == sField {
-					found = true
-					tFields[j] = backend.Field{}
-					iFields[i] = tField
-
-					break
-				}
+			if !exists {
+				return 0, fmt.Errorf("%s.%s does not exist", table.GetName(), uVal.FieldName)
 			}
 
-			if !found {
-				return 0, fmt.Errorf("%s.%s does not exist", table.GetName(), sField)
-			}
+			iFields = append(iFields, field)
 		}
+	} else { // fieldNames omitted, all fields are being inserted into in, in order
+		iFields = table.GetFields()
 	}
 
-	values := make([]backend.Value, len(sValues))
-	for i, sVal := range sValues {
+	values := make([]backend.Value, len(iFields))
+	for i, uVal := range args.Values {
 		field := iFields[i]
 
-		val, err := field.NewValue(sVal)
+		val, err := field.NewValue(uVal)
 		if err != nil {
 			return 0, fmt.Errorf("error with %s.%s: %w", table.GetName(), field.Name, err)
 		}
@@ -161,31 +76,26 @@ func (e *SQLEngine) insertRow(ctx context.Context, args []interface{}) (int, err
 	return count, nil
 }
 
-// used to represent the arguments for a SELECT statement in SQL. If fields
-// is of len zero or nil, then all fields will be fetched.
-type selectRowsArgs struct {
-	tableName   string
-	fields      []string
-	whereClause *whereClause
-}
-
-func (e *SQLEngine) getTableRows(ctx context.Context, args selectRowsArgs) ([][]string, error) {
-	t, err := e.getTable(ctx, args.tableName)
+func (e *SQLEngine) getRows(ctx context.Context, args *language.SelectArgs) ([][]string, error) {
+	t, err := e.getTable(ctx, args.TableName)
 	if err != nil {
 		return nil, err
 	}
 
-	var filter *backend.Filter
-	if args.whereClause != nil {
-		temp, err := args.whereClause.Filter(t)
-		if err != nil {
-			return nil, err
-		}
-
-		filter = &temp
+	filter, err := filterFromWhereClause(args.Filter, t)
+	if err != nil {
+		return nil, err
 	}
 
-	rows, err := t.GetRows(ctx, args.fields, filter)
+	var fieldsToSelect []string
+
+	if args.AllFields {
+		fieldsToSelect = nil
+	} else {
+		fieldsToSelect = args.FieldNames
+	}
+
+	rows, err := t.GetRows(ctx, fieldsToSelect, filter)
 	if err != nil {
 		return nil, err
 	}
@@ -218,25 +128,15 @@ func (e *SQLEngine) getTableRows(ctx context.Context, args selectRowsArgs) ([][]
 	return returner, nil
 }
 
-type deleteRowsArgs struct {
-	tableName   string
-	whereClause *whereClause
-}
-
-func (e *SQLEngine) deleteRows(ctx context.Context, args deleteRowsArgs) (int, error) {
-	t, err := e.getTable(ctx, args.tableName)
+func (e *SQLEngine) deleteRows(ctx context.Context, args *language.DeleteArgs) (int, error) {
+	t, err := e.getTable(ctx, args.TableName)
 	if err != nil {
 		return 0, err
 	}
 
-	var filter *backend.Filter
-	if args.whereClause != nil {
-		temp, err := args.whereClause.Filter(t)
-		if err != nil {
-			return 0, err
-		}
-
-		filter = &temp
+	filter, err := filterFromWhereClause(args.Filter, t)
+	if err != nil {
+		return 0, err
 	}
 
 	n, err := t.DeleteRows(ctx, filter)
@@ -247,72 +147,48 @@ func (e *SQLEngine) deleteRows(ctx context.Context, args deleteRowsArgs) (int, e
 	return n, nil
 }
 
-// (name string, values []untypedValue, filter *whereClause)
-func (e *SQLEngine) updateRows(ctx context.Context, args []interface{}) (int, error) {
-	if len(args) < 3 {
-		return 0, fmt.Errorf("not enough arguments")
-	}
-
-	// name is first argument
-	name := args[0].(string)
-
-	t, err := e.getTable(ctx, name)
+func (e *SQLEngine) updateRows(ctx context.Context, args *language.UpdateArgs) (int, error) {
+	t, err := e.getTable(ctx, args.TableName)
 	if err != nil {
 		return 0, err
 	}
 
 	// values is second argument
-	rawVals := args[1].([]untypedValue)
+	uVals := args.Values
+	vals := make([]backend.Value, 0, len(uVals))
 
-	fieldsUsed := map[string]bool{}
-	var vals []backend.Value
-
-	for _, rawVal := range rawVals {
-		if fieldsUsed[rawVal.FieldName] {
-			return 0, fmt.Errorf("%s.%s cannot be SET twice", t.GetName(), rawVal.FieldName)
+	for _, uVal := range uVals {
+		field, err := t.FieldWithName(uVal.FieldName)
+		if err != nil {
+			return 0, fmt.Errorf("error with field %s.%s: %w", t.GetName(), uVal.FieldName, err)
 		}
 
-		field, err := t.FieldWithName(rawVal.FieldName)
+		val, err := field.NewValue(uVal.Val)
 		if err != nil {
-			return 0, fmt.Errorf("error with field %s.%s: %w", t.GetName(), rawVal.FieldName, err)
-		}
-
-		val, err := field.NewValue(rawVal.Val)
-		if err != nil {
-			return 0, fmt.Errorf("error with field %s.%s: %w", t.GetName(), rawVal.FieldName, err)
+			return 0, fmt.Errorf("error with field %s.%s: %w", t.GetName(), uVal.FieldName, err)
 		}
 
 		vals = append(vals, val)
 	}
 
-	// where clause is third argument
-	where := args[2].(*whereClause)
-
-	var filter *backend.Filter
-	if where != nil {
-		temp, err := where.Filter(t)
-		if err != nil {
-			return 0, fmt.Errorf("error with WHERE clause: %w", err)
-		}
-
-		filter = &temp
+	filter, err := filterFromWhereClause(args.Filter, t)
+	if err != nil {
+		return 0, err
 	}
 
 	return t.UpdateRows(ctx, vals, filter)
 }
 
-func (e *SQLEngine) getTable(ctx context.Context, name string) (backend.OperableTable, error) {
-	var err error
+func (e *SQLEngine) createTable(ctx context.Context, args *language.CreateTableArgs) (backend.OperableTable, error) {
+	name := args.TableName
+	fields := args.Fields
 
-	table, open := e.openTables[name]
-	if !open {
-		table, err = backend.OpenTable(ctx, name)
-		if err != nil {
-			return nil, err
-		}
-
-		e.openTables[name] = table
+	table, err := backend.CreateTable(ctx, name, fields)
+	if err != nil {
+		return nil, fmt.Errorf("could not create table: %w", err)
 	}
+
+	e.openTables[name] = table
 
 	return table, nil
 }

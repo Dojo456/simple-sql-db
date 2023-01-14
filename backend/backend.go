@@ -3,11 +3,8 @@
 package backend
 
 import (
-	"context"
 	"fmt"
-	"os"
 	"strconv"
-	"sync"
 )
 
 // Primitive represents all the data types that the database can store.
@@ -136,30 +133,6 @@ func (field Field) NewValue(val interface{}) (Value, error) {
 	}
 
 	return Value{}, nil
-}
-
-type table struct {
-	mrw             *sync.RWMutex
-	file            *os.File
-	fileByteCount   int64
-	headerByteCount int64
-	rowByteCount    int64
-	rowCount        int64
-	Name            string
-	Fields          []Field
-}
-
-type OperableTable interface {
-	Cleanup() error
-	GetName() string
-	GetFields() []Field
-	FieldWithName(fieldName string) (Field, error)
-	HasField(fieldName string) bool
-	HasFieldWithType(fieldName string, fieldType Primitive) bool
-	InsertRow(ctx context.Context, vals []Value) (int, error)
-	GetRows(ctx context.Context, fields []string, filter *Filter) ([]Row, error)
-	DeleteRows(ctx context.Context, filter *Filter) (int, error)
-	UpdateRows(ctx context.Context, values []Value, filter *Filter) (int, error)
 }
 
 func (t *table) GetName() string {

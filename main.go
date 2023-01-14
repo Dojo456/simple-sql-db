@@ -4,10 +4,11 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"github.com/Dojo456/simple-sql-db/engine"
 	"log"
 	"os"
 	"os/signal"
+
+	"github.com/Dojo456/simple-sql-db/engine"
 )
 
 func main() {
@@ -37,7 +38,7 @@ func main() {
 		}
 		input := scanner.Text()
 
-		cmd, err := sqlEngine.Execute(ctx, input)
+		cmd, err := sqlEngine.Process(ctx, input)
 		if err != nil {
 			fmt.Println(fmt.Errorf("\nerror executing command: %w", err))
 			continue

@@ -1,9 +1,11 @@
-package parser
+package language
 
 import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/Dojo456/simple-sql-db/backend"
 )
 
 func parseQuotedString(s string) string {
@@ -14,34 +16,6 @@ func isEmptyString(s string) bool {
 	val, _ := regexp.Match(`\S`, []byte(s))
 
 	return !val
-}
-
-func assertFloat64(val interface{}) (float64, error) {
-	f, ok := val.(float64)
-
-	if !ok {
-		return 0, fmt.Errorf("not float64")
-	}
-
-	return f, nil
-}
-
-func assertInt64(val interface{}) (int64, error) {
-	i, ok := val.(int64)
-	if !ok {
-		return 0, fmt.Errorf("not int64")
-	}
-
-	return i, nil
-}
-
-func assertString(val interface{}) (string, error) {
-	s, ok := val.(string)
-	if !ok {
-		return "", fmt.Errorf("not string")
-	}
-
-	return s, nil
 }
 
 var regexpSpaceBeforeEqual = regexp.MustCompile(" =")
@@ -60,16 +34,24 @@ func cleanString(s string) string {
 	return s
 }
 
-// Equal tells whether a and b contain the same elements.
-// A nil argument is equivalent to an empty slice.
-func Equal[T comparable](a, b []T) bool {
-	if len(a) != len(b) {
-		return false
+// parseField takes in a string that is the name and data type of the field separated by a space
+//
+// i.e. "name string"
+func parseField(s string) (backend.Field, error) {
+	tokens := strings.Split(s, " ")
+	if len(tokens) != 2 {
+		return backend.Field{}, fmt.Errorf("%s is not acceptable", s)
 	}
-	for i, v := range a {
-		if v != b[i] {
-			return false
-		}
+
+	name := tokens[0]
+	dataType := backend.Primitive(strings.ToLower(tokens[1]))
+
+	if !dataType.IsValid() {
+		return backend.Field{}, fmt.Errorf("%s is not a valid data type", dataType)
 	}
-	return true
+
+	return backend.Field{
+		Name: name,
+		Type: dataType,
+	}, nil
 }

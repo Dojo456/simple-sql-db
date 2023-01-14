@@ -1,4 +1,4 @@
-package engine
+package language
 
 import (
 	"fmt"
@@ -7,94 +7,65 @@ import (
 	"github.com/Dojo456/simple-sql-db/backend"
 )
 
-type keyword string
-
-const (
-	KeywordSelect keyword = "select"
-	KeywordFrom   keyword = "from"
-	KeywordAs     keyword = "as"
-	KeywordTable  keyword = "table"
-	KeywordCreate keyword = "create"
-	KeywordInsert keyword = "insert"
-	KeywordInto   keyword = "into"
-	KeywordValues keyword = "values"
-	KeywordDelete keyword = "delete"
-	KeywordUpdate keyword = "update"
-	KeywordSet    keyword = "set"
-	KeywordWhere  keyword = "where"
-)
-
-func isKeyword(s string) bool {
-	k := asKeyword(s)
-
-	return k.IsValid()
-}
-
-// asKeyword turns a string into a keyword, ignoring case. This is preferred over calling keyword(s).
-func asKeyword(s string) keyword {
-	s = strings.ToLower(s)
-
-	return keyword(s)
-}
-
-func (k keyword) IsValid() bool {
-	switch k {
-	case KeywordSelect, KeywordFrom, KeywordAs, KeywordTable, KeywordCreate, KeywordInsert, KeywordInto, KeywordValues, KeywordWhere, KeywordDelete, KeywordUpdate, KeywordSet:
-		return true
+func Validate(statement string) error {
+	_, err := split(statement)
+	if err != nil {
+		return fmt.Errorf("could not split statement: %w", err)
 	}
-	return false
+
+	return nil
 }
 
-type symbol string
-
-const (
-	symbolSemicolon   symbol = ";"
-	symbolAsterisk    symbol = "*"
-	symbolComma       symbol = ","
-	symbolLeftParen   symbol = "("
-	symbolRightParen  symbol = ")"
-	symbolEqual       symbol = "="
-	symbolGreaterThan symbol = "<"
-	symbolLessThan    symbol = ">"
-	symbolNot         symbol = "!"
-)
-
-func isSymbol(r rune) bool {
-	sym := symbol(r)
-
-	return sym.IsValid()
-}
-
-func (s symbol) IsValid() bool {
-	switch s {
-	case symbolSemicolon, symbolAsterisk, symbolComma, symbolLeftParen, symbolRightParen, symbolEqual, symbolGreaterThan, symbolLessThan, symbolNot:
-		return true
+// Parse takes the SQL statement and returns an executable command the arguments for that command. If err is nil, then command
+// is guaranteed to be not-nil.
+func Parse(statement string) (cmd *Command, args interface{}, err error) {
+	tokens, err := split(statement)
+	if err != nil {
+		return nil, nil, fmt.Errorf("could not split statement: %w", err)
 	}
-	return false
+
+	var currentKeywords []keyword
+
+	for i := 0; i < len(tokens); i++ {
+		token := tokens[i]
+
+		if isKeyword(token.s) {
+			currentKeywords = append(currentKeywords, asKeyword(token.s))
+		}
+
+		cmd, err = getCommand(currentKeywords)
+		if err != nil {
+			return nil, nil, fmt.Errorf("could not get command: %w", err)
+		}
+
+		if cmd != nil { // an executable command has been found
+			var end int
+			args, end, err = captureArguments(*cmd, tokens, i)
+			if err != nil {
+				var mapped []string
+				for _, k := range currentKeywords {
+					mapped = append(mapped, string(k))
+				}
+
+				joined := strings.Join(mapped, " ")
+
+				return nil, nil, fmt.Errorf("invalid arguements for %s statement: %w", joined, err)
+			}
+
+			i = end
+		}
+	}
+
+	return
 }
 
-type tokenType int
-
-const (
-	TokenTypeValue tokenType = iota
-	TokenTypeParenthesisGroup
-	TokenTypeQuoteGroup
-	TokenTypeKeyword
-	TokenTypeSymbolGroup
-)
-
-type token struct {
-	s string
-	t tokenType
-}
-
-// Parse parses a SQL string and converts it to a token slice.
-func Parse(statementString string) ([]token, error) {
-	if isEmptyString(statementString) {
+// split parses a SQL string and converts it to a token slice.
+func split(statement string) ([]token, error) {
+	if isEmptyString(statement) {
 		return nil, fmt.Errorf("empty command")
 	}
 
-	statementString = cleanString(statementString)
+	statement = cleanString(statement)
 
 	var currentToken strings.Builder
 	var tokens []token
@@ -112,14 +83,14 @@ func Parse(statementString string) ([]token, error) {
 	}
 
 	// using iterator loop to allow for easier of movement of cursor (incrementing or decrementing i)
-	for i := 0; i < len(statementString); i++ {
-		r := rune(statementString[i])
+	for i := 0; i < len(statement); i++ {
+		r := rune(statement[i])
 
 		// TODO look into pattern matching switch statements in Go
 		if r == '(' { // special parenthesis group
 			addCurrentToken()
 
-			group, end, err := captureParenthesisGroup(statementString, i)
+			group, end, err := captureParenthesisGroup(statement, i)
 			if err != nil {
 				return nil, fmt.Errorf("could not capture parenthesis group at %d: %w", i, err)
 			}
@@ -133,7 +104,7 @@ func Parse(statementString string) ([]token, error) {
 		} else if isQuote(r) {
 			addCurrentToken()
 
-			group, end, err := captureQuoteGroup(statementString, i)
+			group, end, err := captureQuoteGroup(statement, i)
 			if err != nil {
 				return nil, fmt.Errorf("could not capture quote group at %d: %w", i, err)
 			}
@@ -147,7 +118,7 @@ func Parse(statementString string) ([]token, error) {
 		} else if isSymbol(r) { // special case of symbol group, usually for operators in WHERE clause
 			addCurrentToken()
 
-			group, end, err := captureSymbolGroup(statementString, i)
+			group, end, err := captureSymbolGroup(statement, i)
 			if err != nil {
 				return nil, fmt.Errorf("could not capture symbol group at %d: %w", i, err)
 			}
@@ -185,7 +156,7 @@ func captureParenthesisGroup(s string, start int) (group string, end int, err er
 	i := start + 1
 	closed := false
 
-	for i = start + 1; i < len(s); i++ {
+	for ; i < len(s); i++ {
 		c := rune(s[i])
 
 		if c == ')' {
@@ -261,195 +232,160 @@ func captureSymbolGroup(s string, start int) (group string, end int, err error) 
 	return captured.String(), i, nil
 }
 
-// command is an executable SQL command that requires 0 or more arguments afterwards
-type command int
-
-const (
-	CreateTableCommand command = iota
-	SelectCommand
-	InsertCommand
-	DeleteCommand
-	UpdateCommand
-)
-
-func getCommand(keywords []keyword) (*command, error) {
-	if len(keywords) == 0 {
-		return nil, nil
-	}
-
-	var returner command
-	found := false
-
-	first := keywords[0]
-	switch first {
-	case KeywordCreate:
-		{
-			if len(keywords) > 1 {
-				second := keywords[1]
-				switch second {
-				case KeywordTable:
-					returner = CreateTableCommand
-					found = true
-				}
-			}
-		}
-	case KeywordSelect:
-		returner = SelectCommand
-		found = true
-	case KeywordInsert:
-		{
-			if len(keywords) > 1 {
-				second := keywords[1]
-				switch second {
-				case KeywordInto:
-					returner = InsertCommand
-					found = true
-				}
-			}
-		}
-	case KeywordDelete:
-		{
-			if len(keywords) > 1 {
-				second := keywords[1]
-				switch second {
-				case KeywordFrom:
-					returner = DeleteCommand
-					found = true
-				}
-			}
-		}
-	case KeywordUpdate:
-		returner = UpdateCommand
-		found = true
-	}
-
-	if !found {
-		return nil, nil
-	}
-
-	return &returner, nil
-}
-
 // captureArguments will capture all arguments required for an executable from the list of tokens with the start index
 // being the index of the last token in the command statement. If arguments cannot be properly captured, an error
 // will be returned. It returns the arguments as an evaluable slice and the index of the last argument token.
-func (c command) captureArguments(tokens []token, start int) (args []evaluable, end int, err error) {
+func captureArguments(forCommand Command, tokens []token, start int) (args interface{}, end int, err error) {
 	truncated := tokens[start+1:]
-	argsCaptured := 0
+	index := 0
 
-	switch c {
+	switch forCommand {
 	case CreateTableCommand:
-		args, argsCaptured, err = captureCreateTableArgs(truncated)
+		args, index, err = captureCreateTableArgs(truncated)
 	case InsertCommand:
-		args, argsCaptured, err = captureInsertArgs(truncated)
+		args, index, err = captureInsertArgs(truncated)
 	case SelectCommand:
-		args, argsCaptured, err = captureSelectArgs(truncated)
+		args, index, err = captureSelectArgs(truncated)
 	case DeleteCommand:
-		args, argsCaptured, err = captureDeleteArgs(truncated)
+		args, index, err = captureDeleteArgs(truncated)
 	case UpdateCommand:
-		args, argsCaptured, err = captureUpdateArgs(truncated)
+		args, index, err = captureUpdateArgs(truncated)
 	}
 
 	if err != nil {
 		return nil, 0, err
 	}
 
-	return args, start + argsCaptured, nil
+	return args, start + index, nil
 }
 
-// untypedValue is an unparsed value that has the potential to be parsed into a backend.Value.
-type untypedValue struct {
-	Val       string
-	FieldName string
-}
-
-func captureCreateTableArgs(truncated []token) ([]evaluable, int, error) {
+func captureCreateTableArgs(truncated []token) (*CreateTableArgs, int, error) {
 	if len(truncated) < 2 {
 		return nil, 0, fmt.Errorf("not enough arguments")
 	}
 
-	name := truncated[0]
+	i := 0
+	name := truncated[i]
 	if name.t != TokenTypeValue {
-		return nil, 0, fmt.Errorf("invalid table name")
+		return nil, i, fmt.Errorf("invalid table name")
 	}
+	i++
 
-	fields := truncated[1]
+	fields := truncated[i]
 	if fields.t != TokenTypeParenthesisGroup {
-		return nil, 0, fmt.Errorf("invalid fields declaration")
+		return nil, i, fmt.Errorf("invalid fields declaration")
+	}
+	i++
+
+	// the cleaned string should have the outer parenthesis removed and no newlines or redundant white spaces
+	// fields in a CREATE TABLE statement are separated by commas
+	s := cleanString(fields.s)
+
+	rawFields := strings.Split(s, ",")
+	parsedFields := make([]backend.Field, len(rawFields))
+
+	for j, rf := range rawFields {
+		f, err := parseField(rf)
+		if err != nil {
+			return nil, i, fmt.Errorf("could not parse field %d: %w", j, err)
+		}
+
+		parsedFields[j] = f
 	}
 
-	return []evaluable{
-		asValue(name.s),
-		asValue(fields.s),
-	}, 2, nil
+	return &CreateTableArgs{TableName: name.s, Fields: parsedFields}, i, nil
 }
 
-func captureInsertArgs(truncated []token) ([]evaluable, int, error) {
+func captureInsertArgs(truncated []token) (*InsertArgs, int, error) {
 	if len(truncated) < 3 {
 		return nil, 0, fmt.Errorf("not enough arguments")
 	}
 
-	args := make([]evaluable, 0, 3)
-
+	// table name
 	i := 0
 	name := truncated[i]
 	if name.t != TokenTypeValue {
-		return nil, 0, fmt.Errorf("invalid syntax")
+		return nil, i, fmt.Errorf("invalid syntax")
 	}
-	args = append(args, asValue(name.s))
-	i++
 
+	// either fields specifier or values
 	fieldsOrValue := truncated[i]
-	toAppend := ""
+	hasFieldNames := false
+	var fieldNames []string
 	if fieldsOrValue.t == TokenTypeParenthesisGroup { // values are explicitly assigned to fields
-		toAppend = fieldsOrValue.s
+		fieldNames = strings.Split(fieldsOrValue.s, ",")
+
+		// validate that each field is only specified once
+		visited := make(map[string]bool, len(fieldNames))
+		for _, sField := range fieldNames {
+			if visited[sField] {
+				return nil, i, fmt.Errorf("cannot insert into same field twice: %s", sField)
+			}
+
+			visited[sField] = true
+		}
+
+		hasFieldNames = true
 		i++
 	}
-	args = append(args, asValue(toAppend))
 
 	valKeyword := truncated[i]
 	if valKeyword.t != TokenTypeValue || asKeyword(valKeyword.s) != KeywordValues {
-		return nil, 0, fmt.Errorf("invalid syntax")
+		return nil, i, fmt.Errorf("expecting VALUE keyword")
 	}
 	i++
 
-	values := truncated[i]
-	if values.t != TokenTypeParenthesisGroup {
-		return nil, 0, fmt.Errorf("invalid values syntax")
+	valuesToken := truncated[i]
+	if valuesToken.t != TokenTypeParenthesisGroup {
+		return nil, i, fmt.Errorf("invalid values syntax")
 	}
-	args = append(args, asValue(values.s))
-	i++
+	valueStrings := strings.Split(valuesToken.s, ",")
 
-	return args, i, nil
+	if len(fieldNames) == 0 {
+		fieldNames = make([]string, len(valueStrings))
+	}
+
+	var values []UntypedValue
+	for i, value := range valueStrings {
+		values = append(values, UntypedValue{
+			Val:       value,
+			FieldName: fieldNames[i],
+		})
+	}
+
+	return &InsertArgs{TableName: name.s, Values: values, HasFieldNames: hasFieldNames}, i, nil
 }
 
-func captureSelectArgs(truncated []token) ([]evaluable, int, error) {
-	var args []evaluable
+func captureSelectArgs(truncated []token) (*SelectArgs, int, error) {
+	tokensUsed := 0
 
-	i := 0
-
-	var fields []string
-	for l := len(truncated); i < l; i++ {
-		c := truncated[i]
+	var fieldNames []string
+	for l := len(truncated); tokensUsed < l; tokensUsed++ {
+		c := truncated[tokensUsed]
 		if strings.ToLower(c.s) == string(KeywordFrom) {
 			break
 		}
 
 		split := strings.Split(c.s, ",")
 
-		fields = append(fields, split...)
+		fieldNames = append(fieldNames, split...)
 	}
-	args = append(args, asValue(fields))
+	tokensUsed++
 
-	i++
-	name := truncated[i].s
-	args = append(args, asValue(name))
+	// check for * select all
+	allFields := len(fieldNames) == 1 && fieldNames[0] == "*"
+	if allFields {
+		fieldNames = nil
+	}
 
-	i++
+	name := truncated[tokensUsed].s
+	tokensUsed++
+
 	// search for WHERE clause
-	if i != len(truncated) && keyword(strings.ToLower(truncated[i].s)) == KeywordWhere {
-		i++
-		stringTokens := strings.Split(truncated[i].s, "=")
+	var whereClause *WhereClause
+	if tokensUsed != len(truncated) && keyword(strings.ToLower(truncated[tokensUsed].s)) == KeywordWhere {
+		tokensUsed++
+		stringTokens := strings.Split(truncated[tokensUsed].s, "=")
 
 		wT := make([]token, 3)
 		for j := 0; j < 2; j++ {
@@ -476,7 +412,6 @@ func captureSelectArgs(truncated []token) ([]evaluable, int, error) {
 		if fieldNameToken.t != TokenTypeValue {
 			return nil, 0, fmt.Errorf("could not parse WHERE clause")
 		}
-		args = append(args, asValue(fieldNameToken.s))
 
 		// parse operator
 		operatorToken := wT[1]
@@ -487,38 +422,52 @@ func captureSelectArgs(truncated []token) ([]evaluable, int, error) {
 		if !operator.IsValid() {
 			return nil, 0, fmt.Errorf("%s is not a valid operator", operatorToken.s)
 		}
-		args = append(args, asValue(operator))
 
 		// parse valueString to compare to
 		valueToken := wT[2]
-		args = append(args, asValue(valueToken.s))
+
+		whereClause = &WhereClause{
+			UntypedValue: UntypedValue{
+				Val:       valueToken.s,
+				FieldName: fieldNameToken.s,
+			},
+			Operator: operator,
+		}
 	}
 
-	return args, i, nil
+	return &SelectArgs{
+		TableName:  name,
+		FieldNames: fieldNames,
+		AllFields:  allFields,
+		Filter:     whereClause,
+	}, tokensUsed, nil
 }
 
-func captureDeleteArgs(truncated []token) ([]evaluable, int, error) {
+func captureDeleteArgs(truncated []token) (*DeleteArgs, int, error) {
 	if len(truncated) < 1 {
 		return nil, 0, fmt.Errorf("not enough arguments")
 	}
 
-	var args []evaluable
-	keywordsCaptured := 0
+	tokensUsed := 0
 
 	name := truncated[0]
 	if name.t != TokenTypeValue {
 		return nil, 0, fmt.Errorf("invalid table name")
 	}
-	args = append(args, asValue(name.s))
+	tokensUsed++
 
-	if len(truncated) > 1 && keyword(strings.ToLower(truncated[1].s)) == KeywordWhere {
-		keywordsCaptured++
+	// search for WHERE clause
+	var whereClause *WhereClause
+	if len(truncated) > 1 && keyword(strings.ToLower(truncated[tokensUsed].s)) == KeywordWhere {
+		tokensUsed++
 		var wT []token
 
 		if len(truncated) == 5 { // in format WHERE field = value
 			wT = truncated[2:]
+			tokensUsed += 3
 		} else { // in format WHERE field=value
-			stringTokens := strings.Split(truncated[2].s, "=")
+			tokensUsed++
+			stringTokens := strings.Split(truncated[tokensUsed].s, "=")
 
 			wT := make([]token, 3)
 			for j := 0; j < 2; j++ {
@@ -544,59 +493,66 @@ func captureDeleteArgs(truncated []token) ([]evaluable, int, error) {
 		// parse field name
 		fieldNameToken := wT[0]
 		if fieldNameToken.t != TokenTypeValue {
-			return nil, 0, fmt.Errorf("could not parse WHERE clause")
+			return nil, tokensUsed, fmt.Errorf("could not parse WHERE clause")
 		}
-		args = append(args, value{val: fieldNameToken.s})
 
 		// parse operator
 		operatorToken := wT[1]
 		if fieldNameToken.t != TokenTypeValue {
-			return nil, 0, fmt.Errorf("could not parse WHERE clause")
+			return nil, tokensUsed, fmt.Errorf("could not parse WHERE clause")
 		}
 		operator := backend.Operator(operatorToken.s)
 		if !operator.IsValid() {
-			return nil, 0, fmt.Errorf("%s is not a valid operator", operatorToken.s)
+			return nil, tokensUsed, fmt.Errorf("%s is not a valid operator", operatorToken.s)
 		}
-		args = append(args, value{val: operator})
 
 		// parse valueString to compare to
 		valueToken := wT[2]
-		args = append(args, value{val: valueToken.s})
+
+		whereClause = &WhereClause{
+			UntypedValue: UntypedValue{
+				FieldName: fieldNameToken.s,
+				Val:       valueToken.s,
+			},
+			Operator: operator,
+		}
 	}
 
-	return args, len(args) + keywordsCaptured, nil
+	return &DeleteArgs{
+		TableName: name.s,
+		Filter:    whereClause,
+	}, tokensUsed, nil
 }
 
-func captureUpdateArgs(truncated []token) ([]evaluable, int, error) {
+func captureUpdateArgs(truncated []token) (*UpdateArgs, int, error) {
 	if len(truncated) < 3 {
 		return nil, 0, fmt.Errorf("not enough arguments")
 	}
 
-	var args []evaluable
-
+	// table name
 	tokensUsed := 0
 	name := truncated[tokensUsed]
 	if name.t != TokenTypeValue {
 		return nil, 0, fmt.Errorf("invalid syntax")
 	}
-	args = append(args, asValue(name.s))
 	tokensUsed++
 
+	// SET keyword
 	setKeyword := truncated[tokensUsed]
 	if setKeyword.t != TokenTypeValue || asKeyword(setKeyword.s) != KeywordSet {
 		return nil, 0, fmt.Errorf("invalid syntax")
 	}
 	tokensUsed++
 
+	// capture Values and break on WHERE clause
 	hasWhereClause := false
-
-	var valTokens [][]token
+	var valTokens [][]token // each value is a
 
 	i := 0
 	for ; i+tokensUsed < len(truncated); i++ {
 		current := truncated[i+tokensUsed]
 
-		if asKeyword(current.s) == KeywordWhere {
+		if asKeyword(current.s) == KeywordWhere { // found WHERE clause and all values have been captured
 			hasWhereClause = true
 			i++
 
@@ -613,7 +569,7 @@ func captureUpdateArgs(truncated []token) ([]evaluable, int, error) {
 	}
 	tokensUsed += i
 
-	var vals []untypedValue
+	var vals []UntypedValue
 	for i, tokens := range valTokens {
 		e1, op, e2, err := parseEquation(tokens)
 		if err != nil {
@@ -624,14 +580,13 @@ func captureUpdateArgs(truncated []token) ([]evaluable, int, error) {
 			return nil, 0, fmt.Errorf("value statement must use \"=\" between field name and value")
 		}
 
-		vals = append(vals, untypedValue{
+		vals = append(vals, UntypedValue{
 			Val:       e2.s,
 			FieldName: e1.s,
 		})
 	}
-	args = append(args, asValue(vals))
 
-	var whereArg *whereClause
+	var whereArg *WhereClause
 	if hasWhereClause {
 		if tokensUsed+3 > len(truncated) {
 			return nil, 0, fmt.Errorf("not enough arguements for WHERE clause")
@@ -645,17 +600,20 @@ func captureUpdateArgs(truncated []token) ([]evaluable, int, error) {
 
 		tokensUsed += 3
 	}
-	args = append(args, asValue(whereArg))
 
-	return args, tokensUsed, nil
+	return &UpdateArgs{
+		TableName: name.s,
+		Values:    vals,
+		Filter:    whereArg,
+	}, tokensUsed, nil
 }
 
-type whereClause struct {
-	untypedValue
+type WhereClause struct {
+	UntypedValue
 	Operator backend.Operator
 }
 
-func (c *whereClause) Filter(t backend.OperableTable) (backend.Filter, error) {
+func (c *WhereClause) Filter(t backend.OperableTable) (backend.Filter, error) {
 	field, err := t.FieldWithName(c.FieldName)
 	if err != nil {
 		return backend.Filter{}, err
@@ -676,13 +634,13 @@ func (c *whereClause) Filter(t backend.OperableTable) (backend.Filter, error) {
 // parseWhereClause parses a WHERE clause given in the form of a token slice of len 3 and returns a
 // slice with length 3 of those fields parsed. It is a wrapper over parseEquation to accommodate
 // a common use case of that function as the parser of a WHERE clause.
-func parseWhereClause(tokens []token) (whereClause, error) {
+func parseWhereClause(tokens []token) (WhereClause, error) {
 	e1, op, e2, err := parseEquation(tokens)
 	if err != nil {
-		return whereClause{}, err
+		return WhereClause{}, err
 	}
 
-	return whereClause{untypedValue{
+	return WhereClause{UntypedValue{
 		Val:       e2.s,
 		FieldName: e1.s,
 	}, op}, nil

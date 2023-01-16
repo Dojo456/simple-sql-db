@@ -382,58 +382,11 @@ func captureSelectArgs(truncated []token) (*SelectArgs, int, error) {
 	tokensUsed++
 
 	// search for WHERE clause
-	var whereClause *WhereClause
-	if tokensUsed != len(truncated) && keyword(strings.ToLower(truncated[tokensUsed].s)) == KeywordWhere {
-		tokensUsed++
-		stringTokens := strings.Split(truncated[tokensUsed].s, "=")
-
-		wT := make([]token, 3)
-		for j := 0; j < 2; j++ {
-			wT[j] = token{
-				s: stringTokens[j],
-				t: TokenTypeValue,
-			}
-		}
-
-		valueTokenString := stringTokens[2]
-		valueTokenType := TokenTypeValue
-
-		if isQuote(rune(valueTokenString[0])) && isQuote(rune(valueTokenString[len(valueTokenString)-1])) {
-			valueTokenType = TokenTypeQuoteGroup
-		}
-
-		wT[2] = token{
-			s: valueTokenString,
-			t: valueTokenType,
-		}
-
-		// parse field name
-		fieldNameToken := wT[0]
-		if fieldNameToken.t != TokenTypeValue {
-			return nil, 0, fmt.Errorf("could not parse WHERE clause")
-		}
-
-		// parse operator
-		operatorToken := wT[1]
-		if fieldNameToken.t != TokenTypeValue {
-			return nil, 0, fmt.Errorf("could not parse WHERE clause")
-		}
-		operator := backend.Operator(operatorToken.s)
-		if !operator.IsValid() {
-			return nil, 0, fmt.Errorf("%s is not a valid operator", operatorToken.s)
-		}
-
-		// parse valueString to compare to
-		valueToken := wT[2]
-
-		whereClause = &WhereClause{
-			UntypedValue: UntypedValue{
-				Val:       valueToken.s,
-				FieldName: fieldNameToken.s,
-			},
-			Operator: operator,
-		}
+	whereClause, temp, err := searchWhereClause(truncated, tokensUsed)
+	if err != nil {
+		return nil, 0, fmt.Errorf("could not parse WHERE clause: %w", err)
 	}
+	tokensUsed += temp
 
 	return &SelectArgs{
 		TableName:  name,
@@ -457,66 +410,11 @@ func captureDeleteArgs(truncated []token) (*DeleteArgs, int, error) {
 	tokensUsed++
 
 	// search for WHERE clause
-	var whereClause *WhereClause
-	if len(truncated) > 1 && keyword(strings.ToLower(truncated[tokensUsed].s)) == KeywordWhere {
-		tokensUsed++
-		var wT []token
-
-		if len(truncated) == 5 { // in format WHERE field = value
-			wT = truncated[2:]
-			tokensUsed += 3
-		} else { // in format WHERE field=value
-			tokensUsed++
-			stringTokens := strings.Split(truncated[tokensUsed].s, "=")
-
-			wT := make([]token, 3)
-			for j := 0; j < 2; j++ {
-				wT[j] = token{
-					s: stringTokens[j],
-					t: TokenTypeValue,
-				}
-			}
-
-			valueTokenString := stringTokens[2]
-			valueTokenType := TokenTypeValue
-
-			if isQuote(rune(valueTokenString[0])) && isQuote(rune(valueTokenString[len(valueTokenString)-1])) {
-				valueTokenType = TokenTypeQuoteGroup
-			}
-
-			wT[2] = token{
-				s: valueTokenString,
-				t: valueTokenType,
-			}
-		}
-
-		// parse field name
-		fieldNameToken := wT[0]
-		if fieldNameToken.t != TokenTypeValue {
-			return nil, tokensUsed, fmt.Errorf("could not parse WHERE clause")
-		}
-
-		// parse operator
-		operatorToken := wT[1]
-		if fieldNameToken.t != TokenTypeValue {
-			return nil, tokensUsed, fmt.Errorf("could not parse WHERE clause")
-		}
-		operator := backend.Operator(operatorToken.s)
-		if !operator.IsValid() {
-			return nil, tokensUsed, fmt.Errorf("%s is not a valid operator", operatorToken.s)
-		}
-
-		// parse valueString to compare to
-		valueToken := wT[2]
-
-		whereClause = &WhereClause{
-			UntypedValue: UntypedValue{
-				FieldName: fieldNameToken.s,
-				Val:       valueToken.s,
-			},
-			Operator: operator,
-		}
+	whereClause, temp, err := searchWhereClause(truncated, tokensUsed)
+	if err != nil {
+		return nil, 0, fmt.Errorf("could not parse WHERE clause: %w", err)
 	}
+	tokensUsed += temp
 
 	return &DeleteArgs{
 		TableName: name.s,
@@ -545,7 +443,6 @@ func captureUpdateArgs(truncated []token) (*UpdateArgs, int, error) {
 	tokensUsed++
 
 	// capture Values and break on WHERE clause
-	hasWhereClause := false
 	var valTokens [][]token // each value is a
 
 	i := 0
@@ -553,9 +450,6 @@ func captureUpdateArgs(truncated []token) (*UpdateArgs, int, error) {
 		current := truncated[i+tokensUsed]
 
 		if asKeyword(current.s) == KeywordWhere { // found WHERE clause and all values have been captured
-			hasWhereClause = true
-			i++
-
 			break
 		}
 
@@ -586,25 +480,16 @@ func captureUpdateArgs(truncated []token) (*UpdateArgs, int, error) {
 		})
 	}
 
-	var whereArg *WhereClause
-	if hasWhereClause {
-		if tokensUsed+3 > len(truncated) {
-			return nil, 0, fmt.Errorf("not enough arguements for WHERE clause")
-		}
-
-		temp, err := parseWhereClause(truncated[tokensUsed : tokensUsed+3])
-		if err != nil {
-			return nil, 0, err
-		}
-		whereArg = &temp
-
-		tokensUsed += 3
+	whereClause, temp, err := searchWhereClause(truncated, tokensUsed)
+	if err != nil {
+		return nil, 0, fmt.Errorf("could not parse WHERE clause: %w", err)
 	}
+	tokensUsed += temp
 
 	return &UpdateArgs{
 		TableName: name.s,
 		Values:    vals,
-		Filter:    whereArg,
+		Filter:    whereClause,
 	}, tokensUsed, nil
 }
 
@@ -629,6 +514,67 @@ func (c *WhereClause) Filter(t backend.OperableTable) (backend.Filter, error) {
 		Operator:  c.Operator,
 		FieldName: c.FieldName,
 	}, nil
+}
+
+func searchWhereClause(truncated []token, tokensUsed int) (*WhereClause, int, error) {
+	if tokensUsed != len(truncated) && keyword(strings.ToLower(truncated[tokensUsed].s)) == KeywordWhere {
+		if len(truncated) < tokensUsed+3 {
+			return nil, 0, fmt.Errorf("incomplete WHERE clause")
+		}
+
+		tokensUsed++
+		stringTokens := truncated[tokensUsed : tokensUsed+3]
+
+		wT := make([]token, 3)
+		for j := 0; j < 2; j++ {
+			wT[j] = token{
+				s: stringTokens[j].s,
+				t: TokenTypeValue,
+			}
+		}
+
+		valueTokenString := stringTokens[2].s
+		valueTokenType := TokenTypeValue
+
+		if isQuote(rune(valueTokenString[0])) && isQuote(rune(valueTokenString[len(valueTokenString)-1])) {
+			valueTokenType = TokenTypeQuoteGroup
+		}
+
+		wT[2] = token{
+			s: valueTokenString,
+			t: valueTokenType,
+		}
+
+		// parse field name
+		fieldNameToken := wT[0]
+		if fieldNameToken.t != TokenTypeValue {
+			return nil, 0, fmt.Errorf("could not parse WHERE clause")
+		}
+
+		// parse operator
+		operatorToken := wT[1]
+		if fieldNameToken.t != TokenTypeValue {
+			return nil, 0, fmt.Errorf("could not parse WHERE clause")
+		}
+		operator := backend.Operator(operatorToken.s)
+		if !operator.IsValid() {
+			return nil, 0, fmt.Errorf("%s is not a valid operator", operatorToken.s)
+		}
+
+		// parse valueString to compare to
+		valueToken := wT[2]
+		tokensUsed += 3
+
+		return &WhereClause{
+			UntypedValue: UntypedValue{
+				Val:       valueToken.s,
+				FieldName: fieldNameToken.s,
+			},
+			Operator: operator,
+		}, tokensUsed, nil
+	}
+
+	return nil, 0, nil
 }
 
 // parseWhereClause parses a WHERE clause given in the form of a token slice of len 3 and returns a

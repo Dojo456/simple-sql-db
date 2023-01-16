@@ -443,8 +443,6 @@ func captureUpdateArgs(truncated []token) (*UpdateArgs, int, error) {
 	}
 	tokensUsed++
 
-	hasWhereClause := false
-
 	var valTokens [][]token
 
 	i := 0
@@ -486,7 +484,7 @@ func captureUpdateArgs(truncated []token) (*UpdateArgs, int, error) {
 	if err != nil {
 		return nil, 0, fmt.Errorf("could not parse WHERE clause: %w", err)
 	}
-	args = append(args, asValue(whereArg))
+	tokensUsed += temp
 
 	return &UpdateArgs{
 		TableName: name.s,

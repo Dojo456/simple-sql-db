@@ -408,6 +408,7 @@ func captureDeleteArgs(truncated []token) (*DeleteArgs, int, error) {
 		return nil, 0, fmt.Errorf("invalid table name")
 	}
 	tokensUsed++
+	tokensUsed++
 
 	// search for WHERE clause
 	whereClause, temp, err := searchWhereClause(truncated, tokensUsed)
@@ -442,8 +443,9 @@ func captureUpdateArgs(truncated []token) (*UpdateArgs, int, error) {
 	}
 	tokensUsed++
 
-	// capture Values and break on WHERE clause
-	var valTokens [][]token // each value is a
+	hasWhereClause := false
+
+	var valTokens [][]token
 
 	i := 0
 	for ; i+tokensUsed < len(truncated); i++ {
@@ -484,7 +486,7 @@ func captureUpdateArgs(truncated []token) (*UpdateArgs, int, error) {
 	if err != nil {
 		return nil, 0, fmt.Errorf("could not parse WHERE clause: %w", err)
 	}
-	tokensUsed += temp
+	args = append(args, asValue(whereArg))
 
 	return &UpdateArgs{
 		TableName: name.s,

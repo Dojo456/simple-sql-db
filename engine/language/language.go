@@ -1,6 +1,10 @@
 package language
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/Dojo456/simple-sql-db/backend"
+)
 
 type keyword string
 
@@ -17,6 +21,8 @@ const (
 	KeywordUpdate keyword = "update"
 	KeywordSet    keyword = "set"
 	KeywordWhere  keyword = "where"
+	KeywordJoin   keyword = "join"
+	KeywordOn     keyword = "on"
 )
 
 func isKeyword(s string) bool {
@@ -34,7 +40,7 @@ func asKeyword(s string) keyword {
 
 func (k keyword) IsValid() bool {
 	switch k {
-	case KeywordSelect, KeywordFrom, KeywordAs, KeywordTable, KeywordCreate, KeywordInsert, KeywordInto, KeywordValues, KeywordWhere, KeywordDelete, KeywordUpdate, KeywordSet:
+	case KeywordOn, KeywordJoin, KeywordSelect, KeywordFrom, KeywordAs, KeywordTable, KeywordCreate, KeywordInsert, KeywordInto, KeywordValues, KeywordWhere, KeywordDelete, KeywordUpdate, KeywordSet:
 		return true
 	}
 	return false
@@ -81,4 +87,42 @@ const (
 type token struct {
 	s string
 	t tokenType
+}
+
+type WhereClause struct {
+	UntypedValue
+	Operator backend.Operator
+}
+
+type JoinLocation string
+
+const (
+	JoinLocationInner JoinLocation = "inner"
+	JoinLocationLeft  JoinLocation = "left"
+	JoinLocationRight JoinLocation = "right"
+	JoinLocationOuter JoinLocation = "outer"
+)
+
+// asJoinLocation turns a string into a JoinLocation, ignoring case. This is preferred over calling JoinLocation(s).
+func asJoinLocation(s string) JoinLocation {
+	s = strings.ToLower(s)
+
+	return JoinLocation(s)
+}
+
+func isJoinLocation(s string) bool {
+	switch JoinLocation(s) {
+	case JoinLocationInner, JoinLocationLeft, JoinLocationRight, JoinLocationOuter:
+		return true
+	}
+
+	return false
+}
+
+type JoinClause struct {
+	ParentField string
+	ChildField  string
+	TableName   string
+	Location    JoinLocation
+	Filter      *WhereClause
 }

@@ -70,10 +70,18 @@ func (e *SQLEngine) insertRow(ctx context.Context, args *language.InsertArgs) (i
 }
 
 func (e *SQLEngine) getRows(ctx context.Context, args *language.SelectArgs) ([][]string, error) {
-	t, err := e.getTable(ctx, args.TableName)
-	if err != nil {
-		return nil, err
+	tables := map[string]backend.OperableTable{}
+
+	for _, tableField := range args.TableFields {
+		t, err := e.getTable(ctx, tableField.TableName)
+		if err != nil {
+			return nil, err
+		}
+
+		tables[tableField.TableName] = t
 	}
+
+	t := tables[args.TableName]
 
 	filter, err := filterFromWhereClause(args.Filter, t)
 	if err != nil {
@@ -85,7 +93,7 @@ func (e *SQLEngine) getRows(ctx context.Context, args *language.SelectArgs) ([][
 	if args.AllFields {
 		fieldsToSelect = nil
 	} else {
-		fieldsToSelect = args.FieldNames
+		fieldsToSelect = args.TableFields[args.TableName].FieldNames
 	}
 
 	rows, err := t.GetRows(ctx, fieldsToSelect, filter)

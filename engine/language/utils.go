@@ -75,6 +75,51 @@ func stripTableNameFromField(fieldName string, tableName string) string {
 	return fieldName
 }
 
+// asTableField can be used to separate a single tableField in the format of {tableName}.{fieldName}.
+// It is a convenient function as this function is used often. If tableName is not specified, then it
+// will be blank.
+func asTableField(s string) (tableName string, fieldName string) {
+	tokens := strings.Split(s, ".")
+
+	if len(tokens) == 2 {
+		return tokens[0], tokens[1]
+
+	}
+
+	return "", tokens[0]
+}
+
+func asTableFields(fieldNames []string, tableNames []string) (map[string]TableFields, error) {
+	fTokens := make([][]string, len(fieldNames))
+	for i, name := range fieldNames {
+		fTokens[i] = strings.Split(name, ".")
+	}
+
+	tableToFields := map[string][]string{}
+
+	for _, tokens := range fTokens {
+		tableName := tableNames[0]
+		fieldName := tokens[0]
+
+		if len(tokens) == 2 {
+			tableName = tokens[0]
+			fieldName = tokens[1]
+		}
+
+		tableToFields[tableName] = append(tableToFields[tableName], fieldName)
+	}
+
+	tableFields := map[string]TableFields{}
+	for _, name := range tableNames {
+		tableFields[name] = TableFields{
+			TableName:  name,
+			FieldNames: tableToFields[name],
+		}
+	}
+
+	return tableFields, nil
+}
+
 // NewValueForField creates a Value for the Field. This is the preferred way to create a Value struct. If the val is
 // of the correct Go type for that field, it will be entered directly. If it is of string type and the field is not,
 // it will attempt to parse the value into the correct type.

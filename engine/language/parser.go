@@ -278,3 +278,148 @@ func parseEquation(tokens []token) (e1 token, operator backend.Operator, e2 toke
 
 	return tokens[0], backend.Operator(tokens[1].s), tokens[2], nil
 }
+
+func searchWhereClause(truncated []token, start int, tableName string) (*WhereClause, int, error) {
+	if start != len(truncated) && keyword(strings.ToLower(truncated[start].s)) == KeywordWhere {
+		tokensUsed := start
+
+		if len(truncated) < tokensUsed+3 {
+			return nil, 0, fmt.Errorf("incomplete WHERE clause")
+		}
+
+		tokensUsed++
+		wT := truncated[tokensUsed : tokensUsed+3]
+
+		// parse field name
+		fieldNameToken := wT[0]
+		if fieldNameToken.t != TokenTypeValue {
+			return nil, tokensUsed, fmt.Errorf("could not parse WHERE clause")
+		}
+		fieldTableName, fieldName := asTableField(fieldNameToken.s)
+		if !isEmptyString(fieldTableName) && fieldTableName != tableName {
+			return nil, (tokensUsed - start), fmt.Errorf("field must be from table %s", tableName)
+		}
+
+		// parse operator
+		operatorToken := wT[1]
+		if fieldNameToken.t != TokenTypeValue {
+			return nil, (tokensUsed - start), fmt.Errorf("could not parse WHERE clause")
+		}
+		operator := backend.Operator(operatorToken.s)
+		if !operator.IsValid() {
+			return nil, (tokensUsed - start), fmt.Errorf("%s is not a valid operator", operatorToken.s)
+		}
+
+		// parse valueString to compare to
+		valueToken := wT[2]
+		tokensUsed += 3
+
+		return &WhereClause{
+			UntypedValue: UntypedValue{
+				Val:       valueToken.s,
+				FieldName: fieldName,
+			},
+			Operator: operator,
+		}, (tokensUsed - start), nil
+	}
+
+	return nil, 0, nil
+}
+
+func searchJoinClauses(truncated []token, start int, parentTable string) ([]JoinClause, int, error) {
+	var clauses []JoinClause
+	tokensUsed := start
+
+	for tokensUsed <= len(truncated)-6 { // multiple join clauses can be made, so loop. each clause requires at least 7
+		joinOrLoc := truncated[tokensUsed].s
+		tokensUsed++
+
+		location := JoinLocationInner
+
+		if isJoinLocation(joinOrLoc) { // found a join clause with loc specifier
+			s := truncated[tokensUsed].s
+			tokensUsed++
+
+			if asKeyword(s) != KeywordJoin {
+				return nil, (tokensUsed - start), fmt.Errorf("expecting JOIN after join location specifier: %s", s)
+			}
+
+			location = asJoinLocation(joinOrLoc)
+		} else if asKeyword(joinOrLoc) != KeywordJoin { // check for error scenario
+			return nil, (tokensUsed - start), fmt.Errorf("expecting JOIN keyword, instead found %s", joinOrLoc)
+		}
+
+		tableName := truncated[tokensUsed].s
+		tokensUsed++
+
+		onKeyword := truncated[tokensUsed].s
+		if asKeyword(onKeyword) != KeywordOn {
+			return nil, (tokensUsed - start), fmt.Errorf("expecting ON keyword, instead found %s", onKeyword)
+		}
+		tokensUsed++
+
+		e1, op, e2, err := parseEquation(truncated[tokensUsed : tokensUsed+3])
+		if err != nil {
+			return nil, (tokensUsed - start), fmt.Errorf("could not parse equation: %w", err)
+		}
+		tokensUsed += 3
+
+		if op != backend.OperatorEqual {
+			return nil, (tokensUsed - start), fmt.Errorf("equals (\"=\") is the only allowed operator in JOIN clauses")
+		}
+
+		tFields := []token{e1, e2}
+		fields := map[string]string{}
+		hasSpecifier := false
+
+		for _, token := range tFields {
+			tableFieldName, fieldName := asTableField(token.s)
+
+			if isEmptyString(tableFieldName) {
+				if _, exists := fields[parentTable]; exists {
+					tableFieldName = tableName
+				} else {
+					tableFieldName = parentTable
+				}
+			} else {
+				hasSpecifier = true
+			}
+
+			_, exists := fields[tableFieldName]
+			if exists {
+				return nil, (tokensUsed - start), fmt.Errorf("cannot specify two fields from the same table in JOIN clause")
+			}
+
+			fields[tableFieldName] = fieldName
+		}
+		if !hasSpecifier {
+			return nil, (tokensUsed - start), fmt.Errorf("at least one field must specify table name in format of {tableName}.{fieldName}")
+		}
+
+		parentField, exists := fields[parentTable]
+		if !exists {
+			return nil, (tokensUsed - start), fmt.Errorf("at least one of the fields of ON should be from table %s", parentTable)
+		}
+
+		childField, exists := fields[tableName]
+		if !exists {
+			return nil, (tokensUsed - start), fmt.Errorf("at least one of the fields of ON should be from table %s", tableName)
+		}
+
+		whereClause, i, err := searchWhereClause(truncated, tokensUsed, tableName)
+		if err != nil {
+			return nil, (tokensUsed - start), err
+		}
+		tokensUsed += i
+
+		clauses = append(clauses, JoinClause{
+			ParentField: parentField,
+			ChildField:  childField,
+			TableName:   tableName,
+			Location:    location,
+			Filter:      whereClause,
+		})
+	}
+
+	return clauses, (tokensUsed - start), nil
+}

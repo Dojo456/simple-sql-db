@@ -87,11 +87,17 @@ type CreateTableArgs struct {
 	Fields    []backend.Field
 }
 
-type SelectArgs struct {
+type TableFields struct {
 	TableName  string
 	FieldNames []string
-	AllFields  bool
-	Filter     *WhereClause
+}
+
+type SelectArgs struct {
+	TableFields map[string]TableFields
+	TableName   string
+	AllFields   bool
+	Filter      *WhereClause
+	Joins       []JoinClause
 }
 
 type InsertArgs struct {
@@ -265,26 +271,36 @@ func captureSelectArgs(truncated []token) (*SelectArgs, int, error) {
 		fieldNames = nil
 	}
 
-	name := truncated[tokensUsed].s
+	tableName := truncated[tokensUsed].s
 	tokensUsed++
 
 	// search for WHERE clause
-	whereClause, temp, err := searchWhereClause(truncated, tokensUsed)
+	whereClause, temp, err := searchWhereClause(truncated, tokensUsed, tableName)
 	if err != nil {
 		return nil, 0, fmt.Errorf("could not parse WHERE clause: %w", err)
 	}
 	tokensUsed += temp
 
-	strippedNames := make([]string, len(fieldNames))
-	for i, fieldName := range fieldNames {
-		strippedNames[i] = stripTableNameFromField(fieldName, name)
+	// search for JOIN clauses
+	joinClauses, temp, err := searchJoinClauses(truncated, tokensUsed, tableName)
+	if err != nil {
+		return nil, 0, fmt.Errorf("could not parse JOIN clause: %w", err)
+	}
+	tokensUsed += temp
+
+	tableNames := []string{tableName}
+	for _, clause := range joinClauses {
+		tableNames = append(tableNames, clause.TableName)
 	}
 
+	tableFields, _ := asTableFields(fieldNames, tableNames)
+
 	return &SelectArgs{
-		TableName:  name,
-		FieldNames: strippedNames,
-		AllFields:  allFields,
-		Filter:     whereClause,
+		TableFields: tableFields,
+		TableName:   tableName,
+		AllFields:   allFields,
+		Filter:      whereClause,
+		Joins:       joinClauses,
 	}, tokensUsed, nil
 }
 
@@ -302,7 +318,7 @@ func captureDeleteArgs(truncated []token) (*DeleteArgs, int, error) {
 	tokensUsed++
 
 	// search for WHERE clause
-	whereClause, temp, err := searchWhereClause(truncated, tokensUsed)
+	whereClause, temp, err := searchWhereClause(truncated, tokensUsed, name.s)
 	if err != nil {
 		return nil, 0, fmt.Errorf("could not parse WHERE clause: %w", err)
 	}
@@ -372,7 +388,7 @@ func captureUpdateArgs(truncated []token) (*UpdateArgs, int, error) {
 		})
 	}
 
-	whereClause, temp, err := searchWhereClause(truncated, tokensUsed)
+	whereClause, temp, err := searchWhereClause(truncated, tokensUsed, name.s)
 	if err != nil {
 		return nil, 0, fmt.Errorf("could not parse WHERE clause: %w", err)
 	}
@@ -383,50 +399,4 @@ func captureUpdateArgs(truncated []token) (*UpdateArgs, int, error) {
 		Values:    vals,
 		Filter:    whereClause,
 	}, tokensUsed, nil
-}
-
-type WhereClause struct {
-	UntypedValue
-	Operator backend.Operator
-}
-
-func searchWhereClause(truncated []token, tokensUsed int) (*WhereClause, int, error) {
-	if tokensUsed != len(truncated) && keyword(strings.ToLower(truncated[tokensUsed].s)) == KeywordWhere {
-		if len(truncated) < tokensUsed+3 {
-			return nil, 0, fmt.Errorf("incomplete WHERE clause")
-		}
-
-		tokensUsed++
-		wT := truncated[tokensUsed : tokensUsed+3]
-
-		// parse field name
-		fieldNameToken := wT[0]
-		if fieldNameToken.t != TokenTypeValue {
-			return nil, 0, fmt.Errorf("could not parse WHERE clause")
-		}
-
-		// parse operator
-		operatorToken := wT[1]
-		if fieldNameToken.t != TokenTypeValue {
-			return nil, 0, fmt.Errorf("could not parse WHERE clause")
-		}
-		operator := backend.Operator(operatorToken.s)
-		if !operator.IsValid() {
-			return nil, 0, fmt.Errorf("%s is not a valid operator", operatorToken.s)
-		}
-
-		// parse valueString to compare to
-		valueToken := wT[2]
-		tokensUsed += 3
-
-		return &WhereClause{
-			UntypedValue: UntypedValue{
-				Val:       valueToken.s,
-				FieldName: fieldNameToken.s,
-			},
-			Operator: operator,
-		}, tokensUsed, nil
-	}
-
-	return nil, 0, nil
 }

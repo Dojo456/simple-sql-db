@@ -18,3 +18,5 @@ DELETE FROM people
 DELETE FROM people WHERE name="penny"
 
 UPDATE people SET age=18 WHERE name="lucas"
+
+select * from people where name="\"daniel\""

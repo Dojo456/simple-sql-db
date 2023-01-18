@@ -53,7 +53,7 @@ func (e *SQLEngine) insertRow(ctx context.Context, args *language.InsertArgs) (i
 	for i, uVal := range args.Values {
 		field := iFields[i]
 
-		val, err := field.NewValue(uVal)
+		val, err := language.NewValueForField(field, uVal.Val)
 		if err != nil {
 			return 0, fmt.Errorf("error with %s.%s: %w", table.GetName(), field.Name, err)
 		}
@@ -156,7 +156,7 @@ func (e *SQLEngine) updateRows(ctx context.Context, args *language.UpdateArgs) (
 			return 0, fmt.Errorf("error with field %s.%s: %w", t.GetName(), uVal.FieldName, err)
 		}
 
-		val, err := field.NewValue(uVal.Val)
+		val, err := language.NewValueForField(field, uVal.Val)
 		if err != nil {
 			return 0, fmt.Errorf("error with field %s.%s: %w", t.GetName(), uVal.FieldName, err)
 		}

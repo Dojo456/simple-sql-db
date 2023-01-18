@@ -191,9 +191,21 @@ func captureQuoteGroup(s string, start int) (group string, end int, err error) {
 
 	i := start + 1
 	closed := false
+	escaped := false
 
 	for ; i < len(s); i++ {
 		r := rune(s[i])
+
+		if escaped {
+			captured.WriteRune(r)
+			escaped = false
+			continue
+		}
+
+		if r == '\\' { // escape character, take next character literally
+			escaped = true
+			continue
+		}
 
 		if isQuote(r) {
 			closed = true
@@ -306,14 +318,15 @@ func captureInsertArgs(truncated []token) (*InsertArgs, int, error) {
 	}
 
 	// table name
-	i := 0
-	name := truncated[i]
+	tokensUsed := 0
+	name := truncated[tokensUsed]
 	if name.t != TokenTypeValue {
-		return nil, i, fmt.Errorf("invalid syntax")
+		return nil, tokensUsed, fmt.Errorf("invalid syntax")
 	}
+	tokensUsed++
 
 	// either fields specifier or values
-	fieldsOrValue := truncated[i]
+	fieldsOrValue := truncated[tokensUsed]
 	hasFieldNames := false
 	var fieldNames []string
 	if fieldsOrValue.t == TokenTypeParenthesisGroup { // values are explicitly assigned to fields
@@ -323,29 +336,31 @@ func captureInsertArgs(truncated []token) (*InsertArgs, int, error) {
 		visited := make(map[string]bool, len(fieldNames))
 		for _, sField := range fieldNames {
 			if visited[sField] {
-				return nil, i, fmt.Errorf("cannot insert into same field twice: %s", sField)
+				return nil, tokensUsed, fmt.Errorf("cannot insert into same field twice: %s", sField)
 			}
 
 			visited[sField] = true
 		}
 
 		hasFieldNames = true
-		i++
+		tokensUsed++
 	}
 
-	valKeyword := truncated[i]
+	valKeyword := truncated[tokensUsed]
 	if valKeyword.t != TokenTypeValue || asKeyword(valKeyword.s) != KeywordValues {
-		return nil, i, fmt.Errorf("expecting VALUE keyword")
+		return nil, tokensUsed, fmt.Errorf("expecting VALUES keyword")
 	}
-	i++
+	tokensUsed++
 
-	valuesToken := truncated[i]
+	valuesToken := truncated[tokensUsed]
 	if valuesToken.t != TokenTypeParenthesisGroup {
-		return nil, i, fmt.Errorf("invalid values syntax")
+		return nil, tokensUsed, fmt.Errorf("invalid values syntax")
 	}
-	valueStrings := strings.Split(valuesToken.s, ",")
+	tokensUsed++
 
-	if len(fieldNames) == 0 {
+	valueStrings := strings.Split(cleanString(valuesToken.s), ",")
+
+	if !hasFieldNames {
 		fieldNames = make([]string, len(valueStrings))
 	}
 
@@ -362,7 +377,7 @@ func captureInsertArgs(truncated []token) (*InsertArgs, int, error) {
 		})
 	}
 
-	return &InsertArgs{TableName: name.s, Values: values, HasFieldNames: hasFieldNames}, i, nil
+	return &InsertArgs{TableName: name.s, Values: values, HasFieldNames: hasFieldNames}, tokensUsed, nil
 }
 
 func captureSelectArgs(truncated []token) (*SelectArgs, int, error) {
@@ -417,11 +432,10 @@ func captureDeleteArgs(truncated []token) (*DeleteArgs, int, error) {
 
 	tokensUsed := 0
 
-	name := truncated[0]
+	name := truncated[tokensUsed]
 	if name.t != TokenTypeValue {
 		return nil, 0, fmt.Errorf("invalid table name")
 	}
-	tokensUsed++
 	tokensUsed++
 
 	// search for WHERE clause
@@ -513,24 +527,6 @@ type WhereClause struct {
 	Operator backend.Operator
 }
 
-func (c *WhereClause) Filter(t backend.OperableTable) (backend.Filter, error) {
-	field, err := t.FieldWithName(c.FieldName)
-	if err != nil {
-		return backend.Filter{}, err
-	}
-
-	val, err := field.NewValue(c.Val)
-	if err != nil {
-		return backend.Filter{}, err
-	}
-
-	return backend.Filter{
-		Value:     val,
-		Operator:  c.Operator,
-		FieldName: c.FieldName,
-	}, nil
-}
-
 func searchWhereClause(truncated []token, tokensUsed int) (*WhereClause, int, error) {
 	if tokensUsed != len(truncated) && keyword(strings.ToLower(truncated[tokensUsed].s)) == KeywordWhere {
 		if len(truncated) < tokensUsed+3 {
@@ -538,27 +534,7 @@ func searchWhereClause(truncated []token, tokensUsed int) (*WhereClause, int, er
 		}
 
 		tokensUsed++
-		stringTokens := truncated[tokensUsed : tokensUsed+3]
-
-		wT := make([]token, 3)
-		for j := 0; j < 2; j++ {
-			wT[j] = token{
-				s: stringTokens[j].s,
-				t: TokenTypeValue,
-			}
-		}
-
-		valueTokenString := stringTokens[2].s
-		valueTokenType := TokenTypeValue
-
-		if isQuote(rune(valueTokenString[0])) && isQuote(rune(valueTokenString[len(valueTokenString)-1])) {
-			valueTokenType = TokenTypeQuoteGroup
-		}
-
-		wT[2] = token{
-			s: valueTokenString,
-			t: valueTokenType,
-		}
+		wT := truncated[tokensUsed : tokensUsed+3]
 
 		// parse field name
 		fieldNameToken := wT[0]
@@ -590,21 +566,6 @@ func searchWhereClause(truncated []token, tokensUsed int) (*WhereClause, int, er
 	}
 
 	return nil, 0, nil
-}
-
-// parseWhereClause parses a WHERE clause given in the form of a token slice of len 3 and returns a
-// slice with length 3 of those fields parsed. It is a wrapper over parseEquation to accommodate
-// a common use case of that function as the parser of a WHERE clause.
-func parseWhereClause(tokens []token) (WhereClause, error) {
-	e1, op, e2, err := parseEquation(tokens)
-	if err != nil {
-		return WhereClause{}, err
-	}
-
-	return WhereClause{UntypedValue{
-		Val:       e2.s,
-		FieldName: e1.s,
-	}, op}, nil
 }
 
 // parseEquation parses a statement in token slice of len 3. It returns the three

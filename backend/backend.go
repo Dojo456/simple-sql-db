@@ -2,11 +2,6 @@
 // database.
 package backend
 
-import (
-	"fmt"
-	"strconv"
-)
-
 // Primitive represents all the data types that the database can store.
 type Primitive string
 
@@ -66,73 +61,6 @@ func (v *Value) Bytes() []byte {
 type Field struct {
 	Name string
 	Type Primitive
-}
-
-// NewValue creates a Value for the Field. This is the preferred way to create a Value struct. If the val is
-// of the correct Go type for that field, it will be entered directly. If it is of string type and the field is not,
-// it will attempt to parse the value into the correct type.
-func (field Field) NewValue(val interface{}) (Value, error) {
-	switch field.Type {
-	case PrimitiveString:
-		{
-			s, ok := val.(string)
-			if !ok {
-				return Value{}, fmt.Errorf("must be string")
-			}
-			return Value{
-				Type:      PrimitiveString,
-				Val:       s,
-				FieldName: field.Name,
-			}, nil
-		}
-
-	case PrimitiveInt:
-		{
-			i, ok := val.(int64)
-			if !ok {
-				s, ok := val.(string)
-				if !ok {
-					return Value{}, fmt.Errorf("could not parse int")
-				}
-
-				sI, err := strconv.Atoi(s)
-				if err != nil {
-					return Value{}, fmt.Errorf("could not parse int")
-				}
-
-				i = int64(sI)
-			}
-			return Value{
-				Type:      PrimitiveInt,
-				Val:       i,
-				FieldName: field.Name,
-			}, nil
-		}
-	case PrimitiveFloat:
-		{
-			f, ok := val.(float64)
-			if !ok {
-				s, ok := val.(string)
-				if !ok {
-					return Value{}, fmt.Errorf("could not parse float")
-				}
-
-				sF, err := strconv.ParseFloat(s, 64)
-				if err != nil {
-					return Value{}, fmt.Errorf("could not parse float")
-				}
-
-				f = sF
-			}
-			return Value{
-				Type:      PrimitiveFloat,
-				Val:       f,
-				FieldName: field.Name,
-			}, nil
-		}
-	}
-
-	return Value{}, nil
 }
 
 func (t *table) GetName() string {

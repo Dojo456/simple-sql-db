@@ -253,8 +253,7 @@ func (t *table) GetRows(ctx context.Context, fields []string, filter *Filter) ([
 // DeleteRows deletes all rows that match the filter. If the filter is nil, all rows will be deleted. It returns the
 // number of rows deleted.
 func (t *table) DeleteRows(ctx context.Context, filter *Filter) (int, error) {
-	// delete all rows
-	if filter == nil {
+	if filter == nil { // delete all rows
 		t.mrw.Lock()
 		defer t.mrw.Unlock()
 
@@ -307,8 +306,7 @@ func (t *table) DeleteRows(ctx context.Context, filter *Filter) (int, error) {
 
 		var end int64
 
-		// if last row
-		if i == len(rows)-1 {
+		if i == len(rows)-1 { // if last row
 			end = t.rowCount - 1
 		} else {
 			// check for consecutive rows
@@ -330,28 +328,29 @@ func (t *table) DeleteRows(ctx context.Context, filter *Filter) (int, error) {
 
 	// each chunk is shifted together, so need to ensure not too much data
 	// is loaded into mem at once
-	maxChunkSize := int64(1048576) // 1MB
+	maxChunkSize := int64(1024 * 1024 * 5) // 5MB
 
-	temp := make([]chunk, 0, len(chunks))
+	splitChunks := make([]chunk, 0, len(chunks))
 	for _, current := range chunks {
 		rowCount := current.end - current.start + 1
 		chunkSize := rowCount * t.rowByteCount
 
-		// if split needed
-		if chunkSize > maxChunkSize && rowCount > 2 {
+		if chunkSize > maxChunkSize && rowCount > 2 { // if split needed
 			split := (current.end + current.start) / 2
 
-			temp = append(temp, chunk{
+			splitChunks = append(splitChunks, chunk{
 				start: current.start,
 				end:   split,
 				shift: current.shift,
 			})
 
-			temp = append(temp, chunk{
+			splitChunks = append(splitChunks, chunk{
 				start: split + 1,
 				end:   current.end,
 				shift: current.shift,
 			})
+		} else {
+			splitChunks = append(splitChunks, current)
 		}
 	}
 
@@ -360,7 +359,7 @@ func (t *table) DeleteRows(ctx context.Context, filter *Filter) (int, error) {
 
 	file := t.file
 
-	for _, chunk := range chunks {
+	for _, chunk := range splitChunks {
 		rowCount := chunk.end - chunk.start + 1
 		chunkSize := rowCount * t.rowByteCount
 

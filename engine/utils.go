@@ -18,7 +18,7 @@ func filterFromWhereClause(whereClause *language.WhereClause, table backend.Oper
 	}
 
 	// value name is fifth argument
-	value, err := field.NewValue(whereClause.UntypedValue.Val)
+	value, err := language.NewValueForField(field, whereClause.UntypedValue.Val)
 	if err != nil {
 		return nil, err
 	}

@@ -3,13 +3,18 @@ package language
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/Dojo456/simple-sql-db/backend"
 )
 
-func parseQuotedString(s string) string {
-	return s[1 : len(s)-2]
+func escapeQuotedString(s string) string {
+	if s[0] == '"' && s[len(s)-1] == '"' {
+		return s[1 : len(s)-1]
+	}
+
+	return s
 }
 
 func isEmptyString(s string) bool {
@@ -68,4 +73,72 @@ func stripTableNameFromField(fieldName string, tableName string) string {
 	}
 
 	return fieldName
+}
+
+// NewValueForField creates a Value for the Field. This is the preferred way to create a Value struct. If the val is
+// of the correct Go type for that field, it will be entered directly. If it is of string type and the field is not,
+// it will attempt to parse the value into the correct type.
+func NewValueForField(field backend.Field, val interface{}) (backend.Value, error) {
+	switch field.Type {
+	case backend.PrimitiveString:
+		{
+			s, ok := val.(string)
+			if !ok {
+				return backend.Value{}, fmt.Errorf("must be a string")
+			}
+
+			return backend.Value{
+				Type:      backend.PrimitiveString,
+				Val:       escapeQuotedString(s),
+				FieldName: field.Name,
+			}, nil
+		}
+
+	case backend.PrimitiveInt:
+		{
+			i, ok := val.(int64)
+			if !ok {
+				s, ok := val.(string)
+				if !ok {
+					return backend.Value{}, fmt.Errorf("could not parse int")
+				}
+
+				sI, err := strconv.Atoi(s)
+				if err != nil {
+					return backend.Value{}, fmt.Errorf("could not parse int")
+				}
+
+				i = int64(sI)
+			}
+			return backend.Value{
+				Type:      backend.PrimitiveInt,
+				Val:       i,
+				FieldName: field.Name,
+			}, nil
+		}
+	case backend.PrimitiveFloat:
+		{
+			f, ok := val.(float64)
+			if !ok {
+				s, ok := val.(string)
+				if !ok {
+					return backend.Value{}, fmt.Errorf("could not parse float")
+				}
+
+				sF, err := strconv.ParseFloat(s, 64)
+				if err != nil {
+					return backend.Value{}, fmt.Errorf("could not parse float")
+				}
+
+				f = sF
+			}
+			return backend.Value{
+				Type:      backend.PrimitiveFloat,
+				Val:       f,
+				FieldName: field.Name,
+			}, nil
+		}
+	}
+
+	return backend.Value{}, nil
 }

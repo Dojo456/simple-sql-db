@@ -198,7 +198,7 @@ func (t *table) rowsThatMatch(ctx context.Context, filter *Filter) ([]Row, error
 // fields will be returned. If the filter is nil, all rows will be returned.
 func (t *table) GetRows(ctx context.Context, fields []string, filter *Filter) ([]Row, error) {
 	shouldSelectField := make([]bool, len(t.Fields))
-	fieldsToSelectCount := len(t.Fields)
+	fieldsToSelectCount := 0
 
 	// if there is a filter for fields, validate field inputs
 	if len(fields) != 0 {

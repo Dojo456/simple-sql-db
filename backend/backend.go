@@ -158,7 +158,7 @@ func (t *table) FieldWithName(fieldName string) (Field, error) {
 		}
 	}
 
-	return Field{}, fmt.Errorf("%s.%s does not exist", t.Name, fieldName)
+	return Field{}, fieldNotExistErr(fieldName, t.GetName())
 }
 
 func (t *table) HasField(fieldName string) bool {

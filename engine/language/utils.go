@@ -20,16 +20,20 @@ func isEmptyString(s string) bool {
 
 var regexpSpaceBeforeEqual = regexp.MustCompile(" =")
 var regexpSpaceAfterEqual = regexp.MustCompile("= ")
+var regexpSpaceBeforeComma = regexp.MustCompile(" ,")
+var regexpSpaceAfterComma = regexp.MustCompile(", ")
 
 // cleanString removes all newline characters and replaces it with spaces. It also removes redundant white
 // space characters, such as the ones before and after an equal sign.
 func cleanString(s string) string {
 	s = strings.ReplaceAll(s, "\n", " ")
 	s = strings.ReplaceAll(s, "  ", " ")
-	s = strings.ReplaceAll(s, ", ", ",")
 
 	s = regexpSpaceBeforeEqual.ReplaceAllString(s, "=")
 	s = regexpSpaceAfterEqual.ReplaceAllString(s, "=")
+
+	s = regexpSpaceBeforeComma.ReplaceAllString(s, ",")
+	s = regexpSpaceAfterComma.ReplaceAllString(s, ",")
 
 	return s
 }
@@ -54,4 +58,14 @@ func parseField(s string) (backend.Field, error) {
 		Name: name,
 		Type: dataType,
 	}, nil
+}
+
+func stripTableNameFromField(fieldName string, tableName string) string {
+	tokens := strings.Split(fieldName, ".")
+
+	if len(tokens) == 2 && tokens[0] == tableName { // field name is {tableName}.{fieldName}
+		return tokens[1]
+	}
+
+	return fieldName
 }

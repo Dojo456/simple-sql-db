@@ -31,12 +31,6 @@ func (e *SQLEngine) insertRow(ctx context.Context, args *language.InsertArgs) (i
 		return 0, fmt.Errorf("could not open table file: %w", err)
 	}
 
-	// set of all fields in the table for quick checking
-	tFields := map[string]backend.Field{}
-	for _, field := range table.GetFields() {
-		tFields[field.Name] = field
-	}
-
 	// fields to insert into in order
 	var iFields []backend.Field
 
@@ -44,10 +38,9 @@ func (e *SQLEngine) insertRow(ctx context.Context, args *language.InsertArgs) (i
 		iFields = make([]backend.Field, len(args.Values))
 
 		for _, uVal := range args.Values {
-			field, exists := tFields[uVal.FieldName]
-
-			if !exists {
-				return 0, fmt.Errorf("%s.%s does not exist", table.GetName(), uVal.FieldName)
+			field, err := table.FieldWithName(uVal.FieldName)
+			if err != nil {
+				return 0, err
 			}
 
 			iFields = append(iFields, field)

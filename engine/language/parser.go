@@ -123,12 +123,16 @@ func split(statement string) ([]token, error) {
 				return nil, fmt.Errorf("could not capture symbol group at %d: %w", i, err)
 			}
 
-			tokens = append(tokens, token{
-				s: group,
-				t: TokenTypeSymbolGroup,
-			})
+			if !(group == "," && len(group) == 1) { // capturing actual symbol group
+				tokens = append(tokens, token{
+					s: group,
+					t: TokenTypeSymbolGroup,
+				})
+			}
+
 			i = end
 			continue
+
 		} else if r == ' ' { // found end to current token, begin next token
 			addCurrentToken()
 		} else { // adding to current token
@@ -345,11 +349,16 @@ func captureInsertArgs(truncated []token) (*InsertArgs, int, error) {
 		fieldNames = make([]string, len(valueStrings))
 	}
 
+	strippedNames := make([]string, len(fieldNames))
+	for i, fieldName := range fieldNames {
+		strippedNames[i] = stripTableNameFromField(fieldName, name.s)
+	}
+
 	var values []UntypedValue
 	for i, value := range valueStrings {
 		values = append(values, UntypedValue{
 			Val:       value,
-			FieldName: fieldNames[i],
+			FieldName: strippedNames[i],
 		})
 	}
 
@@ -388,9 +397,14 @@ func captureSelectArgs(truncated []token) (*SelectArgs, int, error) {
 	}
 	tokensUsed += temp
 
+	strippedNames := make([]string, len(fieldNames))
+	for i, fieldName := range fieldNames {
+		strippedNames[i] = stripTableNameFromField(fieldName, name)
+	}
+
 	return &SelectArgs{
 		TableName:  name,
-		FieldNames: fieldNames,
+		FieldNames: strippedNames,
 		AllFields:  allFields,
 		Filter:     whereClause,
 	}, tokensUsed, nil
@@ -463,6 +477,7 @@ func captureUpdateArgs(truncated []token) (*UpdateArgs, int, error) {
 	}
 	tokensUsed += i
 
+	// values
 	var vals []UntypedValue
 	for i, tokens := range valTokens {
 		e1, op, e2, err := parseEquation(tokens)
@@ -476,7 +491,7 @@ func captureUpdateArgs(truncated []token) (*UpdateArgs, int, error) {
 
 		vals = append(vals, UntypedValue{
 			Val:       e2.s,
-			FieldName: e1.s,
+			FieldName: stripTableNameFromField(e1.s, name.s),
 		})
 	}
 

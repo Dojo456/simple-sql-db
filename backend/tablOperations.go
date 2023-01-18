@@ -219,7 +219,7 @@ func (t *table) GetRows(ctx context.Context, fields []string, filter *Filter) ([
 		if fieldsToSelectCount != len(fields) {
 			e := exclusive(fields, tFieldNames)[0]
 
-			return nil, fmt.Errorf("%s.%s does not exist", t.Name, e)
+			return nil, fieldNotExistErr(e, t.GetName())
 		}
 	} else {
 		for i := 0; i < len(t.Fields); i++ {
@@ -454,4 +454,8 @@ func (t *table) UpdateRows(ctx context.Context, values []Value, filter *Filter) 
 	}
 
 	return len(newRows), nil
+}
+
+func fieldNotExistErr(fieldName string, tableName string) error {
+	return fmt.Errorf("field \"%s\" does not exist on table \"%s\"", fieldName, tableName)
 }

@@ -10,7 +10,7 @@ type OperableTable interface {
 	HasField(fieldName string) bool
 	HasFieldWithType(fieldName string, fieldType Primitive) bool
 	InsertRow(ctx context.Context, vals []Value) (int, error)
-	GetRows(ctx context.Context, fields []string, filter *Filter) ([]Row, error)
-	DeleteRows(ctx context.Context, filter *Filter) (int, error)
-	UpdateRows(ctx context.Context, values []Value, filter *Filter) (int, error)
+	GetRows(ctx context.Context, fields []string, filters []Filter) ([]Row, error)
+	DeleteRows(ctx context.Context, filters []Filter) (int, error)
+	UpdateRows(ctx context.Context, values []Value, filters []Filter) (int, error)
 }

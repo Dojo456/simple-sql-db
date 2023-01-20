@@ -109,9 +109,11 @@ type Row struct {
 
 // rowsThatMatch returns an array of rows that match the specified filter. This should be used as the implementation
 // of the WHERE clause for any statements that support one. If the filter is nil, all rows will be selected.
-func (t *table) rowsThatMatch(ctx context.Context, filter *Filter) ([]Row, error) {
-	// validate filter
-	if filter != nil {
+func (t *table) rowsThatMatch(ctx context.Context, filters []Filter) ([]Row, error) {
+	// validate filters
+	fieldFilters := map[string][]Filter{}
+
+	for _, filter := range filters {
 		field, err := t.FieldWithName(filter.FieldName)
 		if err != nil {
 			return nil, err
@@ -122,9 +124,13 @@ func (t *table) rowsThatMatch(ctx context.Context, filter *Filter) ([]Row, error
 		}
 
 		// only supported operator for range comparisons are equal and not equal
-		if len(filter.Vals) > 0 && !(filter.Operator == OperatorEqual || filter.Operator == OperatorNotEqual) {
-			return nil, fmt.Errorf("only OperatorEqual and OperatorNotEqual are supported in range comparison")
+		if len(filter.Vals) > 0 {
+			if !(filter.Operator == OperatorEqual || filter.Operator == OperatorNotEqual) {
+				return nil, fmt.Errorf("only OperatorEqual and OperatorNotEqual are supported in range comparison")
+			}
 		}
+
+		fieldFilters[filter.FieldName] = append(fieldFilters[filter.FieldName], filter)
 	}
 
 	// begin file operations
@@ -143,7 +149,8 @@ func (t *table) rowsThatMatch(ctx context.Context, filter *Filter) ([]Row, error
 	var i int64 = 0
 	for ; i < t.rowCount; i++ {
 		row := make([]Value, 0, len(t.Fields))
-		shouldAddRow := true
+		// default value True
+		var shouldAddRow bool = true
 
 		var cursor int64 = 0
 		rowBytes := make([]byte, t.rowByteCount)
@@ -154,16 +161,33 @@ func (t *table) rowsThatMatch(ctx context.Context, filter *Filter) ([]Row, error
 
 		for _, field := range t.Fields {
 			if shouldAddRow {
-				isFilterField := false
-				if filter != nil {
-					isFilterField = field.Name == filter.FieldName
-				}
-
 				// read cell
 				cellBytes := rowBytes[cursor : cursor+field.Type.Size()]
 
-				if isFilterField {
-					shouldAddRow = compareValues(cellBytes, filter.Operator, anyToB(filter.Val), field.Type)
+				// test filters if needed
+				for _, filter := range fieldFilters[field.Name] {
+					// default value False
+					var satisfiesFilter bool = false
+
+					if len(filter.Vals) > 0 { // perform range comparison
+						// if OperatorEqual, only one needs to equal
+						// if OperatorNotEqual, all needs to be not equal
+
+						for _, val := range filter.Vals {
+							if compareValues(cellBytes, filter.Operator, anyToB(val), field.Type) {
+								// by finding just one equal value, either operator can be determined
+								satisfiesFilter = filter.Operator == OperatorEqual
+								break
+							}
+						}
+					} else {
+						satisfiesFilter = compareValues(cellBytes, filter.Operator, anyToB(filter.Val), field.Type)
+					}
+
+					if !satisfiesFilter {
+						shouldAddRow = false
+						break
+					}
 				}
 
 				row = append(row, Value{
@@ -189,7 +213,7 @@ func (t *table) rowsThatMatch(ctx context.Context, filter *Filter) ([]Row, error
 
 // GetRows returns the selected fields from a table that matches the filter. If fields is a zero length slice, all
 // fields will be returned. If the filter is nil, all rows will be returned.
-func (t *table) GetRows(ctx context.Context, fields []string, filter *Filter) ([]Row, error) {
+func (t *table) GetRows(ctx context.Context, fields []string, filters []Filter) ([]Row, error) {
 	shouldSelectField := make([]bool, len(t.Fields))
 	fieldsToSelectCount := 0
 
@@ -222,7 +246,7 @@ func (t *table) GetRows(ctx context.Context, fields []string, filter *Filter) ([
 		fieldsToSelectCount = len(t.Fields)
 	}
 
-	rows, err := t.rowsThatMatch(ctx, filter)
+	rows, err := t.rowsThatMatch(ctx, filters)
 	if err != nil {
 		return nil, err
 	}
@@ -245,8 +269,8 @@ func (t *table) GetRows(ctx context.Context, fields []string, filter *Filter) ([
 
 // DeleteRows deletes all rows that match the filter. If the filter is nil, all rows will be deleted. It returns the
 // number of rows deleted.
-func (t *table) DeleteRows(ctx context.Context, filter *Filter) (int, error) {
-	if filter == nil { // delete all rows
+func (t *table) DeleteRows(ctx context.Context, filters []Filter) (int, error) {
+	if len(filters) == 0 { // delete all rows
 		t.mrw.Lock()
 		defer t.mrw.Unlock()
 
@@ -270,7 +294,7 @@ func (t *table) DeleteRows(ctx context.Context, filter *Filter) (int, error) {
 		return int(affected), nil
 	}
 
-	rows, err := t.rowsThatMatch(ctx, filter)
+	rows, err := t.rowsThatMatch(ctx, filters)
 	if err != nil {
 		return 0, err
 	}
@@ -392,8 +416,8 @@ func (t *table) DeleteRows(ctx context.Context, filter *Filter) (int, error) {
 // UpdateRows updates all rows that match the filter to have the provided values. If the filter is nil, all rows will
 // be updated. It returns the number of rows that had a value changed. Meaning, if a row matches the filter but did
 // not require an update, it will not count towards the return value.
-func (t *table) UpdateRows(ctx context.Context, values []Value, filter *Filter) (int, error) {
-	oldRows, err := t.rowsThatMatch(ctx, filter)
+func (t *table) UpdateRows(ctx context.Context, values []Value, filters []Filter) (int, error) {
+	oldRows, err := t.rowsThatMatch(ctx, filters)
 	if err != nil {
 		return 0, err
 	}

@@ -70,6 +70,7 @@ func (e *SQLEngine) insertRow(ctx context.Context, args *language.InsertArgs) (i
 }
 
 func (e *SQLEngine) selectRows(ctx context.Context, args *language.SelectArgs) ([][]string, error) {
+	// load all tables needed
 	tables := map[string]backend.OperableTable{}
 
 	for _, tableField := range args.TableFields {
@@ -81,12 +82,47 @@ func (e *SQLEngine) selectRows(ctx context.Context, args *language.SelectArgs) (
 		tables[tableField.TableName] = t
 	}
 
-	t := tables[args.TableName]
+	// first query JOINS
+	var joinFilters []backend.Filter
+	for _, join := range args.Joins {
+		t := tables[join.TableName]
 
-	filter, err := filterFromWhereClause(args.Filter, t)
-	if err != nil {
-		return nil, err
+		field, err := t.FieldWithName(join.ChildField)
+		if err != nil {
+			return nil, err
+		}
+
+		fieldsToSelect := args.TableFields[join.TableName].FieldNames
+
+		if !contains(fieldsToSelect, join.ChildField) {
+			fieldsToSelect = append(fieldsToSelect, join.ChildField)
+		}
+
+		rows, err := selectRows(ctx, t, fieldsToSelect, join.Filter, nil)
+		if err != nil {
+			return nil, err
+		}
+
+		vals := make([]interface{}, 0, len(rows))
+		for _, row := range rows {
+			for _, val := range row.Values {
+				if val.FieldName == join.ChildField {
+					vals = append(vals, val.Val)
+				}
+			}
+		}
+
+		joinFilters = append(joinFilters, backend.Filter{
+			Vals:      vals,
+			Operator:  backend.OperatorEqual,
+			FieldName: join.ParentField,
+			Value: backend.Value{
+				Type: field.Type,
+			},
+		})
 	}
+
+	t := tables[args.TableName]
 
 	var fieldsToSelect []string
 
@@ -96,7 +132,7 @@ func (e *SQLEngine) selectRows(ctx context.Context, args *language.SelectArgs) (
 		fieldsToSelect = args.TableFields[args.TableName].FieldNames
 	}
 
-	rows, err := t.GetRows(ctx, fieldsToSelect, filter)
+	rows, err := selectRows(ctx, t, fieldsToSelect, args.Filter, joinFilters)
 	if err != nil {
 		return nil, err
 	}
@@ -140,7 +176,12 @@ func (e *SQLEngine) deleteRows(ctx context.Context, args *language.DeleteArgs) (
 		return 0, err
 	}
 
-	n, err := t.DeleteRows(ctx, filter)
+	var filters []backend.Filter
+	if filter != nil {
+		filters = append(filters, *filter)
+	}
+
+	n, err := t.DeleteRows(ctx, filters)
 	if err != nil {
 		return 0, err
 	}
@@ -177,7 +218,12 @@ func (e *SQLEngine) updateRows(ctx context.Context, args *language.UpdateArgs) (
 		return 0, err
 	}
 
-	return t.UpdateRows(ctx, vals, filter)
+	var filters []backend.Filter
+	if filter != nil {
+		filters = append(filters, *filter)
+	}
+
+	return t.UpdateRows(ctx, vals, filters)
 }
 
 func (e *SQLEngine) createTable(ctx context.Context, args *language.CreateTableArgs) (backend.OperableTable, error) {

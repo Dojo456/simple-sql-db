@@ -103,7 +103,7 @@ func (e *SQLEngine) selectRows(ctx context.Context, args *language.SelectArgs) (
 			return nil, err
 		}
 
-		vals := make([]interface{}, 0, len(rows))
+		var vals []interface{}
 		for _, row := range rows {
 			for _, val := range row.Values {
 				if val.FieldName == join.ChildField {
@@ -113,9 +113,10 @@ func (e *SQLEngine) selectRows(ctx context.Context, args *language.SelectArgs) (
 		}
 
 		joinFilters = append(joinFilters, backend.Filter{
-			Vals:      vals,
-			Operator:  backend.OperatorEqual,
-			FieldName: join.ParentField,
+			Vals:            vals,
+			Operator:        backend.OperatorEqual,
+			FieldName:       join.ParentField,
+			RangeComparison: true,
 			Value: backend.Value{
 				Type: field.Type,
 			},

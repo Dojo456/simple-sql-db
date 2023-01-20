@@ -92,13 +92,13 @@ func (o Operator) IsValid() bool {
 
 // Filter is used in WHERE clause and the filtering for joins. You can either specify a single Val
 // and use any operator to compare them. Or specify a slice of Vals and use the operators Equal or
-// NotEqual to compare. If len(Vals) > 0, then the Val field will be ignored and it will be assumed
-// that a range comparison is intended.
+// NotEqual to compare. If RangeComparison is true, then Value will be ignored in favors of Vals.
 type Filter struct {
 	Value
-	Vals      []interface{}
-	FieldName string
-	Operator  Operator
+	Vals            []interface{}
+	RangeComparison bool
+	FieldName       string
+	Operator        Operator
 }
 
 // Row is a Value slice alongside with the file system index of the row.
@@ -124,7 +124,7 @@ func (t *table) rowsThatMatch(ctx context.Context, filters []Filter) ([]Row, err
 		}
 
 		// only supported operator for range comparisons are equal and not equal
-		if len(filter.Vals) > 0 {
+		if filter.RangeComparison {
 			if !(filter.Operator == OperatorEqual || filter.Operator == OperatorNotEqual) {
 				return nil, fmt.Errorf("only OperatorEqual and OperatorNotEqual are supported in range comparison")
 			}
@@ -169,7 +169,7 @@ func (t *table) rowsThatMatch(ctx context.Context, filters []Filter) ([]Row, err
 					// default value False
 					var satisfiesFilter bool = false
 
-					if len(filter.Vals) > 0 { // perform range comparison
+					if filter.RangeComparison { // perform range comparison
 						// if OperatorEqual, only one needs to equal
 						// if OperatorNotEqual, all needs to be not equal
 

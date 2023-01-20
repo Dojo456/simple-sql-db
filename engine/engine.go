@@ -61,7 +61,7 @@ func (e *SQLEngine) Execute(ctx context.Context, cmd language.Command, args inte
 	case language.CreateTableCommand:
 		return e.createTable(ctx, args.(*language.CreateTableArgs))
 	case language.SelectCommand:
-		return e.getRows(ctx, args.(*language.SelectArgs))
+		return e.selectRows(ctx, args.(*language.SelectArgs))
 	case language.InsertCommand:
 		return e.insertRow(ctx, args.(*language.InsertArgs))
 	case language.DeleteCommand:

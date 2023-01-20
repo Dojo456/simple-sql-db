@@ -15,7 +15,7 @@ func CreateTable(ctx context.Context, name string, fields []Field) (OperableTabl
 
 	file, err := createFile(path)
 	if err != nil {
-		if errors.Is(err, fileAlreadyExistsError) {
+		if errors.Is(err, errFileAlreadyExists) {
 			return nil, fmt.Errorf(`table with name "%s" already exists`, name)
 		} else {
 			return nil, fmt.Errorf("could not create table db file: %w", err)

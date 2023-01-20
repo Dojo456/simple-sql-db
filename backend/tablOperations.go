@@ -90,8 +90,13 @@ func (o Operator) IsValid() bool {
 	return false
 }
 
+// Filter is used in WHERE clause and the filtering for joins. You can either specify a single Val
+// and use any operator to compare them. Or specify a slice of Vals and use the operators Equal or
+// NotEqual to compare. If len(Vals) > 0, then the Val field will be ignored and it will be assumed
+// that a range comparison is intended.
 type Filter struct {
 	Value
+	Vals      []interface{}
 	FieldName string
 	Operator  Operator
 }
@@ -105,7 +110,6 @@ type Row struct {
 // rowsThatMatch returns an array of rows that match the specified filter. This should be used as the implementation
 // of the WHERE clause for any statements that support one. If the filter is nil, all rows will be selected.
 func (t *table) rowsThatMatch(ctx context.Context, filter *Filter) ([]Row, error) {
-
 	// validate filter
 	if filter != nil {
 		field, err := t.FieldWithName(filter.FieldName)
@@ -115,6 +119,11 @@ func (t *table) rowsThatMatch(ctx context.Context, filter *Filter) ([]Row, error
 
 		if field.Type != filter.Type {
 			return nil, fmt.Errorf("%s.%s is of type %s", t.Name, field.Name, field.Type)
+		}
+
+		// only supported operator for range comparisons are equal and not equal
+		if len(filter.Vals) > 0 && !(filter.Operator == OperatorEqual || filter.Operator == OperatorNotEqual) {
+			return nil, fmt.Errorf("only OperatorEqual and OperatorNotEqual are supported in range comparison")
 		}
 	}
 
@@ -152,30 +161,14 @@ func (t *table) rowsThatMatch(ctx context.Context, filter *Filter) ([]Row, error
 
 				// read cell
 				cellBytes := rowBytes[cursor : cursor+field.Type.Size()]
-				var cell interface{}
-				switch field.Type {
-				case PrimitiveString:
-					cell = bToS(cellBytes)
-				case PrimitiveFloat:
-					cell = bToF64(cellBytes)
-				case PrimitiveInt:
-					cell = bToI64(cellBytes)
-				}
 
 				if isFilterField {
-					switch c := cell.(type) {
-					case string:
-						shouldAddRow = compareValues(c, filter.Operator, filter.Val.(string))
-					case int64:
-						shouldAddRow = compareValues(c, filter.Operator, filter.Val.(int64))
-					case float64:
-						shouldAddRow = compareValues(c, filter.Operator, filter.Val.(float64))
-					}
+					shouldAddRow = compareValues(cellBytes, filter.Operator, anyToB(filter.Val), field.Type)
 				}
 
 				row = append(row, Value{
 					Type:      field.Type,
-					Val:       cell,
+					Val:       bToAny(cellBytes, field.Type),
 					FieldName: field.Name,
 				})
 			}

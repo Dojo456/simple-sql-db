@@ -45,16 +45,7 @@ type Value struct {
 }
 
 func (v *Value) Bytes() []byte {
-	switch val := v.Val.(type) {
-	case string:
-		return sToB(val)
-	case int64:
-		return i64ToB(val)
-	case float64:
-		return f64ToB(val)
-	}
-
-	return nil
+	return anyToB(v.Val)
 }
 
 // Field is essentially a column in a table.

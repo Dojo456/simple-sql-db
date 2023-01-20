@@ -35,7 +35,7 @@ func (e *SQLEngine) insertRow(ctx context.Context, args *language.InsertArgs) (i
 	var iFields []backend.Field
 
 	if args.HasFieldNames {
-		iFields = make([]backend.Field, len(args.Values))
+		iFields = make([]backend.Field, 0, len(args.Values))
 
 		for _, uVal := range args.Values {
 			field, err := table.FieldWithName(uVal.FieldName)
@@ -69,7 +69,7 @@ func (e *SQLEngine) insertRow(ctx context.Context, args *language.InsertArgs) (i
 	return count, nil
 }
 
-func (e *SQLEngine) getRows(ctx context.Context, args *language.SelectArgs) ([][]string, error) {
+func (e *SQLEngine) selectRows(ctx context.Context, args *language.SelectArgs) ([][]string, error) {
 	tables := map[string]backend.OperableTable{}
 
 	for _, tableField := range args.TableFields {

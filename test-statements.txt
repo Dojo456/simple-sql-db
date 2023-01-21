@@ -1,8 +1,22 @@
-CREATE TABLE table (name string)
-INSERT INTO table VALUES (daniel)
+CREATE TABLE people (name string, age int)
 
-CREATE TABLE multi (p int, h int)
-insert into multi VALUES (1, 2)
-
+SELECT * FROM people
 SELECT * FROM people WHERE name="penny"
 SELECT * FROM people WHERE name<="a"
+
+INSERT INTO people VALUES (daniel, 17)
+INSERT INTO people VALUES (penny, 17)
+INSERT INTO people VALUES (annie, 18)
+INSERT INTO people VALUES (carson, 18)
+INSERT INTO people VALUES (dakota, 18)
+INSERT INTO people VALUES (rayyan, 18)
+
+INSERT INTO people (age, name) VALUES (18, andy)
+INSERT INTO people (name) VALUES (lucas)
+
+DELETE FROM people
+DELETE FROM people WHERE name="penny"
+
+UPDATE people SET age=18 WHERE name="lucas"
+
+select * from people where name="\"daniel\""

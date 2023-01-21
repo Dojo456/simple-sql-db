@@ -9,25 +9,6 @@ import (
 	"strings"
 )
 
-func compareValues[T string | float64 | int64](v1 T, operator Operator, v2 T) bool {
-	switch operator {
-	case OperatorEqual:
-		return v1 == v2
-	case OperatorNotEqual:
-		return v1 != v2
-	case OperatorLessThan:
-		return v1 < v2
-	case OperatorLessThanOrEqual:
-		return v1 <= v2
-	case OperatorGreaterThan:
-		return v1 > v2
-	case OperatorGreaterThanOrEqual:
-		return v1 >= v2
-	}
-
-	return false
-}
-
 // exclusive returns the elements that are in s1 but not in s2
 func exclusive[T comparable](s1 []T, s2 []T) []T {
 	var returner []T
@@ -51,7 +32,7 @@ func contains[T comparable](slice []T, element T) bool {
 	return false
 }
 
-var fileAlreadyExistsError error = errors.New("file already exists")
+var errFileAlreadyExists error = errors.New("file already exists")
 
 // createFile creates a file at the given path. It will throw an error if the file already exists
 func createFile(path string) (*os.File, error) {
@@ -79,7 +60,7 @@ func createFile(path string) (*os.File, error) {
 
 	// create file if not exists
 	if exists {
-		return nil, fileAlreadyExistsError
+		return nil, errFileAlreadyExists
 	} else {
 		file, err := os.Create(path)
 		if err != nil {
@@ -88,6 +69,36 @@ func createFile(path string) (*os.File, error) {
 
 		return file, nil
 	}
+}
+
+func anyToB(val interface{}) []byte {
+	switch val := val.(type) {
+	case string:
+		return sToB(val)
+	case int64:
+		return i64ToB(val)
+	case float64:
+		return f64ToB(val)
+	case bool:
+		return boolToB(val)
+	default:
+		return nil
+	}
+}
+
+func bToAny(val []byte, as Primitive) interface{} {
+	switch as {
+	case PrimitiveString:
+		return bToS(val)
+	case PrimitiveInt:
+		return bToI64(val)
+	case PrimitiveFloat:
+		return bToF64(val)
+	case PrimitiveBool:
+		return bToBool(val)
+	}
+
+	return nil
 }
 
 // sToB converts a string to a byte slice of size 1024
@@ -138,4 +149,20 @@ func f64ToB(val float64) []byte {
 // bToF64 converts a byte slice of size 8 to a float64
 func bToF64(val []byte) float64 {
 	return math.Float64frombits(binary.LittleEndian.Uint64(val))
+}
+
+// boolToB converts a bool to a byte slice of size 1
+func boolToB(val bool) []byte {
+	b := make([]byte, 1)
+
+	if val {
+		b[0] = 1
+	}
+
+	return b
+}
+
+// bToBool converts a byte slice of size 1 to a bool
+func bToBool(val []byte) bool {
+	return val[0] == 1
 }
